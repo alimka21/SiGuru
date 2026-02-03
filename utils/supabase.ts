@@ -1,55 +1,46 @@
-
 import { createClient } from '@supabase/supabase-js';
 
 // ------------------------------------------------------------------
 // KONFIGURASI ENVIRONMENT VARIABLES
 // ------------------------------------------------------------------
-// PENTING: Akses harus ditulis eksplisit (import.meta.env.NAMA_VAR)
-// agar Vite dapat melakukan 'static replacement' saat build.
-// Jangan membungkusnya dalam objek dinamis atau casting yang kompleks.
 
-let url = '';
-let key = '';
+let supabaseUrl = '';
+let supabaseAnonKey = '';
 
-// 1. Coba ambil dari Vite (import.meta.env)
+// Akses import.meta.env dengan aman
+// Menggunakan try-catch dan pengecekan eksistensi untuk menghindari error "Cannot read properties of undefined"
 try {
-  // @ts-ignore - Mengabaikan error TS agar bundler tetap bisa membaca syntax ini
+  // @ts-ignore
   if (typeof import.meta !== 'undefined' && import.meta.env) {
     // @ts-ignore
-    url = import.meta.env.VITE_SUPABASE_URL || '';
+    supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
     // @ts-ignore
-    key = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+    supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
   }
-} catch (e) {
-  // Hiraukan jika import.meta tidak didukung
-}
-
-// 2. Fallback ke Process Env (Node.js / Webpack standar) jika Vite kosong
-if (!url || !key) {
-  try {
-    if (typeof process !== 'undefined' && process.env) {
-      url = url || process.env.VITE_SUPABASE_URL || '';
-      key = key || process.env.VITE_SUPABASE_ANON_KEY || '';
-    }
-  } catch (e) {
-    // Hiraukan error process
-  }
+} catch (error) {
+  console.warn('Environment variables (import.meta.env) tidak tersedia.');
 }
 
 // ------------------------------------------------------------------
 // VALIDASI & INISIALISASI
 // ------------------------------------------------------------------
 
-export const isSupabaseConfigured = !!url && !!key && url !== 'https://placeholder.supabase.co';
+// Cek apakah variabel sudah terisi
+export const isSupabaseConfigured = 
+  !!supabaseUrl && 
+  !!supabaseAnonKey && 
+  supabaseUrl !== 'https://placeholder.supabase.co';
 
+// Logging status konfigurasi
 if (!isSupabaseConfigured) {
-  console.error("CRITICAL: Supabase Configuration Missing!");
-  console.log("Debug URL:", url ? "Set (Hidden)" : "Empty");
-  console.log("Debug Key:", key ? "Set (Hidden)" : "Empty");
-  console.warn("Tips: Jika di Vercel, pastikan sudah 'Redeploy' setelah menambah Environment Variables.");
+  console.warn("⚠️ Supabase Configuration Missing.");
+  console.log("Aplikasi berjalan dalam Mode Demo.");
+} else {
+  console.log("✅ Supabase Configured");
 }
 
+// Buat client Supabase
 export const supabase = createClient(
-  url || 'https://placeholder.supabase.co', 
-  key || 'placeholder'
+  supabaseUrl || 'https://placeholder.supabase.co', 
+  supabaseAnonKey || 'placeholder'
 );

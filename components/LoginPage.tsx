@@ -21,7 +21,9 @@ export interface RegisterData {
 interface Props {
   onLogin: (data: LoginData) => Promise<void>;
   onRegister: (data: RegisterData) => Promise<void>;
+  onDemoLogin?: () => void;
   isLoading?: boolean;
+  isConfigured?: boolean;
 }
 
 type AuthMode = 'LOGIN' | 'REGISTER';
@@ -31,7 +33,7 @@ const toTitleCase = (str: string) => {
     return str.toLowerCase().replace(/\b\w/g, s => s.toUpperCase());
 };
 
-export const LoginPage: React.FC<Props> = ({ onLogin, onRegister, isLoading }) => {
+export const LoginPage: React.FC<Props> = ({ onLogin, onRegister, onDemoLogin, isLoading, isConfigured = true }) => {
   const [mode, setMode] = useState<AuthMode>('LOGIN');
   const [showPassword, setShowPassword] = useState(false);
 
@@ -83,6 +85,19 @@ export const LoginPage: React.FC<Props> = ({ onLogin, onRegister, isLoading }) =
             <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">SiGuru</h1>
             <p className="text-slate-500 text-sm font-medium">Sistem Administrasi Guru</p>
           </div>
+
+          {!isConfigured && (
+              <div className="mb-6 p-4 bg-orange-50 border border-orange-200 rounded-xl text-center animate-pulse">
+                  <p className="text-xs font-bold text-orange-700 uppercase tracking-wide mb-1">Mode Offline</p>
+                  <p className="text-xs text-orange-600 mb-3">Database belum terkonfigurasi.</p>
+                  <button 
+                    onClick={onDemoLogin}
+                    className="w-full py-2 bg-orange-600 text-white rounded-lg text-xs font-bold hover:bg-orange-700 transition-colors shadow-sm"
+                  >
+                      Masuk sebagai Guru Demo
+                  </button>
+              </div>
+          )}
 
           {/* Tab Switcher */}
           <div className="flex p-1 bg-slate-100 rounded-lg mb-6">
@@ -240,8 +255,4 @@ export const LoginPage: React.FC<Props> = ({ onLogin, onRegister, isLoading }) =
        </div>
        
        <footer className="mt-8 text-center">
-         <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">SiGuru &copy; 2026</p>
-       </footer>
-    </div>
-  );
-};
+         <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">SiGuru &copy;
