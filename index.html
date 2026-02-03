@@ -1,0 +1,82 @@
+
+<!DOCTYPE html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sistem Administrasi Guru</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              "primary": "#137fec",
+              "background-light": "#f6f7f8",
+            },
+            fontFamily: {
+              sans: ["Manrope", "sans-serif"],
+            },
+          },
+        },
+      }
+    </script>
+    <style>
+      body {
+        font-family: 'Manrope', sans-serif;
+        background-color: #f6f7f8;
+      }
+      .material-symbols-outlined {
+        font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+      }
+      /* Custom scrollbar */
+      .custom-scrollbar::-webkit-scrollbar {
+        height: 8px;
+        width: 8px;
+      }
+      .custom-scrollbar::-webkit-scrollbar-track {
+        background: #f1f1f1;
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: #cbd5e1;
+        border-radius: 4px;
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+        background: #94a3b8;
+      }
+      /* Sticky columns for matrix table */
+      .sticky-col {
+        position: sticky;
+        left: 0;
+        z-index: 20;
+      }
+      .sticky-col-2 {
+        position: sticky;
+        left: 48px; /* Width of first column */
+        z-index: 20;
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.3.1",
+    "react/": "https://esm.sh/react@18.3.1/",
+    "react-dom": "https://esm.sh/react-dom@18.3.1",
+    "react-dom/": "https://esm.sh/react-dom@18.3.1/",
+    "@tanstack/react-query": "https://esm.sh/@tanstack/react-query@5.28.4?external=react,react-dom",
+    "@tanstack/react-table": "https://esm.sh/@tanstack/react-table@8.13.2?external=react,react-dom",
+    "zod": "https://esm.sh/zod@3.22.4",
+    "exceljs": "https://esm.sh/exceljs@4.4.0",
+    "@react-pdf/renderer": "https://esm.sh/@react-pdf/renderer@3.3.8?external=react,react-dom",
+    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@^2.93.3"
+  }
+}
+</script>
+</head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
