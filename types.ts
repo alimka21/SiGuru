@@ -1,7 +1,7 @@
 
 // Domain Models
 
-export type TeacherRole = 'CLASS_TEACHER' | 'SUBJECT_TEACHER';
+export type TeacherRole = 'CLASS_TEACHER' | 'SUBJECT_TEACHER' | 'ADMIN'; // Added ADMIN explicitly here
 export type SchoolLevel = 'SD' | 'SMP' | 'SMA' | 'SMK'; 
 
 // AUTH TYPES
@@ -9,7 +9,8 @@ export interface User {
   id: string;
   email: string;
   name: string;
-  role: 'ADMIN' | 'USER';
+  role: TeacherRole;
+  level?: SchoolLevel; // Added Level specific for User Metadata
   isActive: boolean;
   lastLogin?: string;
 }

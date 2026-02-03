@@ -1,5 +1,5 @@
 {
-  "name": "Sistem Administrasi Guru Merdeka",
-  "description": "Aplikasi web administrasi guru berbasis Kurikulum Merdeka dengan fitur input nilai matriks real-time, arsitektur modular, dan dokumentasi sistem teknis.",
+  "name": "Sistem Administrasi Guru",
+  "description": "Aplikasi web administrasi guru berbasis AI dengan fitur input nilai matriks real-time, arsitektur modular, dan dokumentasi sistem teknis.",
   "requestFramePermissions": []
 }

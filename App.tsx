@@ -1,7 +1,7 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { supabase } from './utils/supabase'; // Import Supabase Client
+import { supabase, isSupabaseConfigured } from './utils/supabase'; // Import Supabase Client and Config Flag
 import { GradingSheet } from './components/GradingSheet';
 import { AttendanceSheet } from './components/AttendanceSheet';
 import { Dashboard } from './components/Dashboard';
@@ -10,9 +10,11 @@ import { CurriculumManager } from './components/CurriculumManager';
 import { ClassManager } from './components/ClassManager';
 import { StudentManager } from './components/StudentManager';
 import { ScheduleManager } from './components/ScheduleManager';
-import { CPGenerator } from './components/CPGenerator';
+// Lazy load CPGenerator to isolate Google GenAI dependency issues
+const CPGenerator = React.lazy(() => import('./components/CPGenerator').then(module => ({ default: module.CPGenerator })));
+
 import { RecapManager } from './components/RecapManager';
-import { LoginPage } from './components/LoginPage';
+import { LoginPage, RegisterData, LoginData } from './components/LoginPage';
 import { AdminPanel } from './components/AdminPanel';
 import { 
   TabView, Student, LearningObjective, Subject, IdentityData, 
@@ -66,8 +68,7 @@ const NavItem = ({ active, label, icon, onClick, collapsed }: any) => (
 export default function App() {
   // --- AUTH STATE ---
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [session, setSession] = useState<any>(null);
-  const [isLoadingAuth, setIsLoadingAuth] = useState(true); // Default true to check session first
+  const [isLoadingAuth, setIsLoadingAuth] = useState(true); 
 
   // --- VIEW STATE ---
   const [activeTab, setActiveTab] = useState<TabView>(TabView.LOGIN);
@@ -87,12 +88,16 @@ export default function App() {
   const [navContext, setNavContext] = useState<{ className?: string, scheduleId?: string }>({});
 
   // =================================================================================
-  // 1. SUPABASE AUTHENTICATION CHECK
+  // 1. SUPABASE AUTHENTICATION & SESSION MANAGEMENT
   // =================================================================================
   useEffect(() => {
-    // Check active session
+    if (!isSupabaseConfigured) {
+        setIsLoadingAuth(false);
+        return;
+    }
+
+    // 1. Check Initial Session (Auto-login from localStorage)
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
       if (session?.user) {
         handleUserRestored(session.user);
       } else {
@@ -100,16 +105,15 @@ export default function App() {
       }
     });
 
-    // Listen for auth changes
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      if (session?.user) {
+    // 2. Listen for Auth Changes (Login, Logout, Token Refresh)
+    // Supabase automatically handles token refresh & localStorage persistence.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log("Auth Event:", event);
+      
+      if (event === 'SIGNED_IN' && session?.user) {
         handleUserRestored(session.user);
-      } else {
-        setCurrentUser(null);
-        setActiveTab(TabView.LOGIN);
+      } else if (event === 'SIGNED_OUT') {
+        resetAppState();
       }
     });
 
@@ -118,30 +122,48 @@ export default function App() {
 
   const handleUserRestored = (authUser: any) => {
       // Map Supabase User to App User
+      const meta = authUser.user_metadata || {};
+      
       const appUser: User = {
           id: authUser.id,
           email: authUser.email || '',
-          name: authUser.user_metadata?.full_name || authUser.email?.split('@')[0] || 'Guru',
-          role: authUser.email === 'admin@siguru.com' ? 'ADMIN' : 'USER', // Simple admin check logic
+          name: meta.full_name || authUser.email?.split('@')[0] || 'Guru',
+          role: authUser.email === 'admin@siguru.com' || meta.role === 'ADMIN' ? 'ADMIN' : (meta.role || 'SUBJECT_TEACHER'),
+          level: meta.level || 'SMA',
           isActive: true
       };
-      setCurrentUser(appUser);
-      loadUserData(appUser.email);
       
-      // Determine Tab
+      setCurrentUser(appUser);
+      loadUserData(appUser); // Load local app data
+      
+      // Auto Redirect to Dashboard/Admin
       if (appUser.role === 'ADMIN') {
          setActiveTab(TabView.ADMIN_PANEL);
       } else {
          setActiveTab(TabView.DASHBOARD);
       }
+      
+      setIsLoadingAuth(false);
+  };
+
+  const resetAppState = () => {
+      setCurrentUser(null);
+      setIdentity(INITIAL_IDENTITY);
+      setStudents([]);
+      setClasses([]);
+      setSchedules([]);
+      setTps([]);
+      setAttendanceData({});
+      setGradeData({});
+      setActiveTab(TabView.LOGIN);
       setIsLoadingAuth(false);
   };
 
   // =================================================================================
   // 2. DATA LOADING (From LocalStorage for now, keyed by Email)
   // =================================================================================
-  const loadUserData = (email: string) => {
-        const storageKey = `siguru_data_${email}`;
+  const loadUserData = (user: User) => {
+        const storageKey = `siguru_data_${user.email}`;
         const savedDataStr = localStorage.getItem(storageKey);
         
         if (savedDataStr) {
@@ -159,8 +181,13 @@ export default function App() {
             console.error("Failed to parse saved data", e);
           }
         } else {
-            // Defaults
-            setIdentity({...INITIAL_IDENTITY, teacherName: email.split('@')[0]});
+            // Defaults for new user -> APPLY REGISTERED ROLE & LEVEL
+            setIdentity({
+              ...INITIAL_IDENTITY, 
+              teacherName: user.name,
+              role: user.role === 'ADMIN' ? 'SUBJECT_TEACHER' : user.role, // Default fallback if admin logs in to app view
+              level: user.level || 'SMA'
+            });
         }
   };
 
@@ -170,14 +197,13 @@ export default function App() {
   }, [students.length]);
 
   // =================================================================================
-  // 3. PERSISTENCE LAYER (Save Logic - LocalStorage + Supabase Placeholder)
+  // 3. PERSISTENCE LAYER (Save App Data to LocalStorage)
   // =================================================================================
   
-  // Function to save current state
   const saveDataToStorage = useCallback(() => {
     if (!currentUser) return;
     
-    // 1. Save to LocalStorage (Instant)
+    // Save App Data locally (separate from Auth Session)
     const storageKey = `siguru_data_${currentUser.email}`;
     const payload: UserStorageData = {
       identity,
@@ -190,14 +216,9 @@ export default function App() {
       gradeData
     };
     localStorage.setItem(storageKey, JSON.stringify(payload));
-    
-    // 2. Future: Save to Supabase DB
-    // Since we have a relational DB setup in Supabase (from Blueprint), 
-    // a proper sync would require mapping this JSON back to SQL Tables.
-    // For now, we keep data local to browser but attached to the logged-in Supabase user.
   }, [currentUser, identity, students, classes, schedules, tps, subject, attendanceData, gradeData]);
 
-  // Auto-save on any data change
+  // Auto-save on data change
   useEffect(() => {
     if (currentUser && activeTab !== TabView.LOGIN && activeTab !== TabView.ADMIN_PANEL) {
       const timeout = setTimeout(saveDataToStorage, 1000); 
@@ -207,28 +228,83 @@ export default function App() {
 
 
   // =================================================================================
-  // 4. AUTH HANDLERS (Supabase)
+  // 4. AUTH ACTIONS
   // =================================================================================
 
-  const handleLogin = async (email: string) => {
+  const handleLogin = async (data: LoginData) => {
     setIsLoadingAuth(true);
-    const { error } = await supabase.auth.signInWithOtp({
-        email,
-        options: {
-            // Set this to your production URL when deploying to Vercel
-            emailRedirectTo: window.location.origin, 
-        }
-    });
 
-    if (error) {
+    if (!isSupabaseConfigured) {
         Swal.fire({
-            title: 'Gagal Mengirim Link',
-            text: error.message,
+            title: 'Konfigurasi Hilang', 
+            text: 'URL Supabase atau Anon Key belum diset di file .env. Sistem tidak dapat menghubungi database.', 
             icon: 'error'
         });
         setIsLoadingAuth(false);
+        return;
+    }
+
+    const { error } = await supabase.auth.signInWithPassword({
+        email: data.email,
+        password: data.password
+    });
+
+    if (error) {
+        // Tampilkan error jika login gagal. Tidak ada fallback ke mode demo.
+        let errorMsg = error.message;
+        if (error.message.includes("Invalid login credentials")) {
+            errorMsg = "Email belum terdaftar atau password salah. Silakan cek kembali.";
+        }
+        
+        Swal.fire({
+            title: 'Gagal Masuk',
+            text: errorMsg,
+            icon: 'error'
+        });
+        setIsLoadingAuth(false);
+    } 
+    // Success handled by onAuthStateChange
+  };
+
+  const handleRegister = async (data: RegisterData) => {
+    setIsLoadingAuth(true);
+
+    if (!isSupabaseConfigured) {
+        Swal.fire({
+            title: 'Konfigurasi Hilang', 
+            text: 'URL Supabase atau Anon Key belum diset. Tidak dapat mendaftarkan akun.', 
+            icon: 'error'
+        });
+        setIsLoadingAuth(false);
+        return;
+    }
+
+    const { error } = await supabase.auth.signUp({
+      email: data.email,
+      password: data.password,
+      options: {
+        data: {
+          full_name: data.name,
+          role: data.role,
+          level: data.level
+        }
+      }
+    });
+
+    if (error) {
+      Swal.fire({
+        title: 'Registrasi Gagal',
+        text: error.message,
+        icon: 'error'
+      });
+      setIsLoadingAuth(false);
     } else {
-        // UI is handled in LoginPage by waiting for promise
+      Swal.fire({
+        title: 'Registrasi Berhasil',
+        text: 'Akun Anda telah dibuat. Silahkan login jika tidak diarahkan otomatis.',
+        icon: 'success'
+      });
+      // Auth state change will handle the rest
     }
   };
 
@@ -241,16 +317,19 @@ export default function App() {
       cancelButtonText: 'Batal'
     }).then(async (result: any) => {
       if (result.isConfirmed) {
-        saveDataToStorage(); // Ensure save before exit
-        await supabase.auth.signOut();
-        setCurrentUser(null);
-        setActiveTab(TabView.LOGIN);
+        saveDataToStorage(); // Ensure app data is saved one last time
+        
+        if (isSupabaseConfigured) {
+            await supabase.auth.signOut(); // Triggers SIGNED_OUT event -> resetAppState()
+        } else {
+            resetAppState(); 
+        }
       }
     });
   };
 
   // =================================================================================
-  // 5. APP LOGIC HANDLERS (Wrappers to update State)
+  // 5. APP LOGIC HANDLERS
   // =================================================================================
 
   const handleIdentitySave = (newData: IdentityData) => {
@@ -277,12 +356,12 @@ export default function App() {
     setActiveTab(tab);
   };
 
-  // --- MOCK ADMIN HANDLERS (For UI Demo only, since real users are in Supabase Auth now) ---
+  // MOCK ADMIN HANDLERS
   const handleAddUser = (email: string, name: string) => {
-      Swal.fire('Info', 'Gunakan Supabase Dashboard untuk mengundang user via email.', 'info');
+      Swal.fire('Info', 'Gunakan halaman registrasi untuk menambah user baru.', 'info');
   };
   const handleDeleteUser = (id: string) => {
-      Swal.fire('Info', 'Gunakan Supabase Dashboard untuk menghapus user.', 'info');
+      Swal.fire('Info', 'Fungsi hapus user perlu akses Supabase Service Role.', 'info');
   };
   const handleUpdateUser = (id: string, name: string) => {
      // Local visual update only
@@ -293,14 +372,28 @@ export default function App() {
   // RENDER
   // =================================================================================
 
-  if (!currentUser || activeTab === TabView.LOGIN) {
-    return <LoginPage onLogin={handleLogin} isLoading={isLoadingAuth} />;
+  // 1. Loading State (Full Screen)
+  if (isLoadingAuth) {
+      return (
+          <div className="flex h-screen w-full items-center justify-center bg-background-light">
+              <div className="flex flex-col items-center gap-4">
+                  <div className="size-12 border-4 border-slate-200 border-t-primary rounded-full animate-spin"></div>
+                  <p className="text-slate-500 font-bold text-sm animate-pulse">Memuat Data...</p>
+              </div>
+          </div>
+      );
   }
 
+  // 2. Login Page
+  if (!currentUser) {
+    return <LoginPage onLogin={handleLogin} onRegister={handleRegister} isLoading={isLoadingAuth} />;
+  }
+
+  // 3. Admin Panel
   if (activeTab === TabView.ADMIN_PANEL && currentUser?.role === 'ADMIN') {
     return (
       <AdminPanel 
-        users={[currentUser]} // Mock list for now
+        users={[currentUser]} // In real app, fetch all users from Supabase DB
         onAddUser={handleAddUser}
         onDeleteUser={handleDeleteUser}
         onUpdateUser={handleUpdateUser}
@@ -310,6 +403,7 @@ export default function App() {
     );
   }
 
+  // 4. Main App Dashboard
   return (
     <QueryClientProvider client={queryClient}>
       <div className="flex min-h-screen font-sans">
@@ -478,10 +572,19 @@ export default function App() {
                 )}
 
                 {activeTab === TabView.CP_GENERATOR && (
-                    <CPGenerator 
-                        onSave={handleSaveGeneratedTPs}
-                        onBack={() => handleContextNavigate(TabView.DASHBOARD)}
-                    />
+                    <Suspense fallback={
+                        <div className="flex items-center justify-center h-full p-12 text-slate-400">
+                             <div className="flex flex-col items-center gap-2">
+                                <span className="size-8 border-4 border-slate-200 border-t-primary rounded-full animate-spin"></span>
+                                <span className="text-sm font-bold">Memuat Modul AI...</span>
+                             </div>
+                        </div>
+                    }>
+                        <CPGenerator 
+                            onSave={handleSaveGeneratedTPs}
+                            onBack={() => handleContextNavigate(TabView.DASHBOARD)}
+                        />
+                    </Suspense>
                 )}
 
                 {activeTab === TabView.CLASS_MASTER && (

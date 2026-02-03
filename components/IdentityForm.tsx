@@ -234,12 +234,11 @@ export const IdentityForm: React.FC<Props> = ({ data, onSave, onBack }) => {
                                     disabled={formData.role === 'CLASS_TEACHER'}
                                     className="w-full rounded-lg border-slate-200 focus:ring-2 focus:ring-primary focus:border-transparent text-sm font-bold text-slate-900 cursor-pointer disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
                                 >
-                                    <option value="SD">SD (Sekolah Dasar)</option>
+                                    <option value="SD">SD/MI Sederajat</option>
                                     {formData.role !== 'CLASS_TEACHER' && (
                                         <>
-                                            <option value="SMP">SMP (Sekolah Menengah Pertama)</option>
-                                            <option value="SMA">SMA (Sekolah Menengah Atas)</option>
-                                            <option value="SMK">SMK (Sekolah Menengah Kejuruan)</option>
+                                            <option value="SMP">SMP/MTs Sederajat</option>
+                                            <option value="SMA">SMA/SMK/MA Sederajat</option>
                                         </>
                                     )}
                                 </select>

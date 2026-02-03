@@ -76,7 +76,7 @@ export const GradingSheet: React.FC<Props> = ({ students, tps, subject, initialC
     const errorKey = `${studentId}-${type}-${id}`;
 
     if (!result.success && value !== '') {
-        setErrorMap(prev => ({...prev, [errorKey]: result.error.errors[0].message}));
+        setErrorMap(prev => ({...prev, [errorKey]: result.error.issues[0].message}));
     } else {
         setErrorMap(prev => {
             const newMap = {...prev};

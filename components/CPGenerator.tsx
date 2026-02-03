@@ -1,22 +1,19 @@
 
 import React, { useState } from 'react';
 import { LearningObjective } from '../types';
+import { GoogleGenAI, Type } from "@google/genai";
+
+declare const Swal: any;
 
 interface Props {
   onSave: (tps: LearningObjective[]) => void;
   onBack: () => void;
 }
 
-const BLOOM_VERBS = [
-    'Menjelaskan', 'Menganalisis', 'Mengevaluasi', 'Menciptakan', 'Menerapkan', 
-    'Mengidentifikasi', 'Membandingkan', 'Merancang', 'Menyimpulkan'
-];
-
 export const CPGenerator: React.FC<Props> = ({ onSave, onBack }) => {
   // Input State
   const [level, setLevel] = useState('SMA');
   const [phase, setPhase] = useState('Fase E');
-  const [grade, setGrade] = useState('10');
   const [cpText, setCpText] = useState('');
   
   // Processing State
@@ -31,42 +28,85 @@ export const CPGenerator: React.FC<Props> = ({ onSave, onBack }) => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [tempText, setTempText] = useState('');
 
-  // --- AI SIMULATION LOGIC ---
-  const handleGenerate = () => {
-    if (!cpText.trim()) return;
+  // --- REAL AI GENERATION LOGIC ---
+  const handleGenerate = async () => {
+    if (!cpText.trim()) {
+        Swal.fire('Error', 'Teks CP tidak boleh kosong.', 'error');
+        return;
+    }
     
     setIsGenerating(true);
     setGeneratedItems([]);
     setSem1Items([]);
     setSem2Items([]);
 
-    // Simulate Network Delay
-    setTimeout(() => {
-        // Simple logic to split CP text into chunks based on commas or periods
-        const chunks = cpText.split(/[.,;]+/).filter(s => s.trim().length > 10);
+    try {
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         
-        const results: LearningObjective[] = chunks.map((chunk, index) => {
-            const verb = BLOOM_VERBS[Math.floor(Math.random() * BLOOM_VERBS.length)];
-            const cleanChunk = chunk.trim().replace(/^(memahami|mengetahui|mampu)\s/i, '');
-            return {
-                id: `gen-${Date.now()}-${index}`,
-                code: `TP.${index + 1}`,
-                description: `${verb} ${cleanChunk}`,
-                semester: undefined, // Not assigned yet
-                lms: [], // Initialize empty
-                criteria: [] // Initialize empty
-            };
+        const prompt = `
+        Tugas: Analisis teks Capaian Pembelajaran (CP) berikut untuk jenjang ${level} ${phase}.
+        
+        Instruksi:
+        1. Pecah CP menjadi beberapa Tujuan Pembelajaran (TP) yang spesifik dan terukur.
+        2. Gunakan kata kerja operasional (Taksonomi Bloom) yang sesuai.
+        3. Pastikan output dalam format JSON array yang valid.
+        
+        Teks CP:
+        "${cpText}"
+        `;
+
+        const response = await ai.models.generateContent({
+            model: "gemini-3-flash-preview", 
+            contents: prompt,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.ARRAY,
+                    items: {
+                        type: Type.OBJECT,
+                        properties: {
+                            tp_description: {
+                                type: Type.STRING,
+                                description: "Deskripsi lengkap tujuan pembelajaran"
+                            },
+                            bloom_level: {
+                                type: Type.STRING,
+                                description: "Level kognitif (C1-C6)"
+                            }
+                        },
+                        required: ["tp_description"]
+                    }
+                }
+            }
         });
 
-        setGeneratedItems(results);
+        if (response.text) {
+            const rawData = JSON.parse(response.text);
+            
+            // Map AI response to our App Type
+            const results: LearningObjective[] = rawData.map((item: any, index: number) => ({
+                id: `gen-${Date.now()}-${index}`,
+                code: `TP.${index + 1}`,
+                description: item.tp_description,
+                semester: undefined,
+                lms: [],
+                criteria: [] 
+            }));
+
+            setGeneratedItems(results);
+            Swal.fire('Sukses', `Berhasil menghasilkan ${results.length} TP.`, 'success');
+        }
+
+    } catch (error: any) {
+        console.error("AI Error:", error);
+        Swal.fire('Gagal Generate', 'Terjadi kesalahan saat menghubungi AI: ' + error.message, 'error');
+    } finally {
         setIsGenerating(false);
-    }, 2000);
+    }
   };
 
   // --- DRAG AND DROP LOGIC (Using HTML5 Native) ---
-  
   const handleDragStart = (e: React.DragEvent, item: LearningObjective, source: 'pool' | 'sem1' | 'sem2') => {
-    // Disable drag if currently editing this item
     if (editingId === item.id) {
         e.preventDefault();
         return;
@@ -80,7 +120,7 @@ export const CPGenerator: React.FC<Props> = ({ onSave, onBack }) => {
     const itemId = e.dataTransfer.getData('itemId');
     const source = e.dataTransfer.getData('source');
 
-    if (source === target) return; // Dropped in same container
+    if (source === target) return; 
 
     // Find Item
     let item: LearningObjective | undefined;
@@ -132,7 +172,7 @@ export const CPGenerator: React.FC<Props> = ({ onSave, onBack }) => {
   const handleSaveAll = () => {
       const finalTPs = [...sem1Items, ...sem2Items];
       if (finalTPs.length === 0) {
-          alert("Silahkan pindahkan minimal 1 TP ke Semester 1 atau 2 sebelum menyimpan.");
+          Swal.fire('Info', 'Silahkan pindahkan minimal 1 TP ke Semester 1 atau 2 sebelum menyimpan.', 'info');
           return;
       }
       onSave(finalTPs);
@@ -206,7 +246,7 @@ export const CPGenerator: React.FC<Props> = ({ onSave, onBack }) => {
                 <span className="material-symbols-outlined text-4xl text-purple-600">psychology_alt</span>
                 AI TP Generator
              </h2>
-             <p className="text-slate-500 text-base">Ubah narasi Capaian Pembelajaran (CP) menjadi Tujuan Pembelajaran (TP) siap pakai secara otomatis.</p>
+             <p className="text-slate-500 text-base">Ubah narasi Capaian Pembelajaran (CP) menjadi Tujuan Pembelajaran (TP) siap pakai secara otomatis menggunakan <strong>Google Gemini AI</strong>.</p>
         </div>
         <div className="flex gap-2">
             <button 
@@ -254,19 +294,19 @@ export const CPGenerator: React.FC<Props> = ({ onSave, onBack }) => {
                       <textarea 
                         value={cpText}
                         onChange={(e) => setCpText(e.target.value)}
-                        placeholder="Paste teks CP dari dokumen pemerintah di sini..."
+                        placeholder="Paste teks CP dari dokumen resmi (Keputusan BSKAP) di sini..."
                         className="w-full mt-1 border-slate-200 rounded-lg text-sm font-medium text-slate-900 p-3 h-32 focus:ring-2 focus:ring-purple-500 focus:border-transparent placeholder:text-slate-400"
                       ></textarea>
                   </div>
                   <button 
                     onClick={handleGenerate}
                     disabled={isGenerating || !cpText}
-                    className="w-full py-3 bg-purple-50 text-purple-700 border border-purple-200 rounded-lg font-bold flex items-center justify-center gap-2 hover:bg-purple-100 transition-colors shadow-sm disabled:opacity-70 disabled:bg-slate-50 disabled:text-slate-400 disabled:border-slate-200"
+                    className="w-full py-3 bg-purple-600 text-white border border-transparent rounded-lg font-bold flex items-center justify-center gap-2 hover:bg-purple-700 transition-colors shadow-sm disabled:opacity-70 disabled:bg-slate-200 disabled:text-slate-400"
                   >
                       {isGenerating ? (
                           <>
                             <span className="material-symbols-outlined animate-spin">sync</span>
-                            AI Sedang Berpikir...
+                            Gemini Sedang Berpikir...
                           </>
                       ) : (
                           <>
@@ -280,7 +320,7 @@ export const CPGenerator: React.FC<Props> = ({ onSave, onBack }) => {
               {/* Pool Results */}
               <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex-1 overflow-y-auto flex flex-col">
                   <h3 className="font-bold text-slate-700 mb-3 flex items-center justify-between">
-                      <span>Hasil AI ({generatedItems.length})</span>
+                      <span>Hasil Analisis AI ({generatedItems.length})</span>
                       <span className="text-[10px] bg-slate-200 px-2 py-1 rounded text-slate-500">Drag ke kanan</span>
                   </h3>
                   
@@ -297,12 +337,11 @@ export const CPGenerator: React.FC<Props> = ({ onSave, onBack }) => {
                             key={item.id}
                             draggable
                             onDragStart={(e) => handleDragStart(e, item, 'pool')}
-                            className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm cursor-grab active:cursor-grabbing hover:border-purple-400 hover:shadow-md transition-all group"
+                            className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm cursor-grab active:cursor-grabbing hover:border-purple-400 hover:shadow-md transition-all group animate-in slide-in-from-left-1"
                         >
                             <p className="text-sm text-slate-900 font-medium leading-snug">{item.description}</p>
                             <div className="flex gap-1 mt-2">
-                                <span className="text-[10px] bg-purple-50 text-purple-700 px-1.5 py-0.5 rounded border border-purple-100 font-bold">Kompetensi</span>
-                                <span className="text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded border border-blue-100 font-bold">Konten</span>
+                                <span className="text-[10px] bg-purple-50 text-purple-700 px-1.5 py-0.5 rounded border border-purple-100 font-bold">Hasil AI</span>
                             </div>
                         </div>
                     ))}
