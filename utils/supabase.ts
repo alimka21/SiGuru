@@ -28,8 +28,8 @@ const getEnv = (key: string, fallback: string) => {
 
 // Konfigurasi URL dan Key dengan Fallback yang diberikan
 // Menggunakan .trim() untuk menghapus spasi yang mungkin tidak sengaja terbawa saat copy-paste
-const supabaseUrl = getEnv('VITE_SUPABASE_URL', 'https://vdjogeynuihxqiojseev.supabase.co').trim();
-const supabaseAnonKey = getEnv('VITE_SUPABASE_ANON_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZkam9nZXludWloeHFpb2pzZWV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAxMjg5NDIsImV4cCI6MjA4NTcwNDk0Mn0.3PBAm5HdybEL2Wt0tmb0kif3KdM-n3L2qPyiAwysh84').trim();
+const supabaseUrl = getEnv('VITE_SUPABASE_URL', 'https://wesgfvldvcxvleyxrksm.supabase.co').trim();
+const supabaseAnonKey = getEnv('VITE_SUPABASE_ANON_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Indlc2dmdmxkdmN4dmxleXhya3NtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAxODQ2NzUsImV4cCI6MjA4NTc2MDY3NX0.pK1-4Du31K34sNimDZg8o6a-mKJqJN5HsQrMINfqAZs').trim();
 
 // Validasi sederhana untuk flag UI
 export const isSupabaseConfigured = 
