@@ -16,7 +16,7 @@
     "exceljs": "^4.4.0",
     "@react-pdf/renderer": "^3.3.8",
     "@supabase/supabase-js": "^2.39.7",
-    "@google/genai": "^0.0.2"
+    "@google/generative-ai": "^0.1.3"
   },
   "devDependencies": {
     "@types/react": "^18.2.64",
