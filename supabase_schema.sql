@@ -1,6 +1,6 @@
 
 -- =================================================================
--- SIGURU - SUPABASE SCHEMA BLUEPRINT (UPDATED v2)
+-- SIGURU - SUPABASE SCHEMA BLUEPRINT (UPDATED v3)
 -- 
 -- INSTRUKSI:
 -- 1. Buka Dashboard Supabase > SQL Editor
@@ -45,6 +45,12 @@ EXCEPTION
     WHEN duplicate_object THEN null;
 END $$;
 
+DO $$ BEGIN
+    CREATE TYPE assessment_type_enum AS ENUM ('FORMATIVE', 'SUMMATIVE');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
+
 -- 3. TABLES STRUCTURE
 -- Menggunakan IF NOT EXISTS agar data lama tidak hilang saat run ulang
 
@@ -66,6 +72,9 @@ CREATE TABLE IF NOT EXISTS teachers (
     full_name VARCHAR(150) NOT NULL,
     nip VARCHAR(50),
     role teacher_role_enum DEFAULT 'SUBJECT_TEACHER',
+    is_active BOOLEAN DEFAULT FALSE, -- Default PENDING untuk pendaftar baru
+    active_academic_year VARCHAR(20) DEFAULT '2025/2026',
+    active_semester semester_enum DEFAULT '1',
     avatar_url TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -123,6 +132,7 @@ CREATE TABLE IF NOT EXISTS assessment_criteria ( -- Kriteria Penilaian
     tp_id UUID REFERENCES learning_objectives(id) ON DELETE CASCADE,
     code VARCHAR(20) NOT NULL,
     description TEXT NOT NULL,
+    type assessment_type_enum DEFAULT 'FORMATIVE',
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -177,7 +187,7 @@ CREATE TABLE IF NOT EXISTS student_attitudes (
     UNIQUE(student_id, subject_id)
 );
 
--- H. JURNAL GURU (NEW)
+-- H. JURNAL GURU
 CREATE TABLE IF NOT EXISTS journals (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     teacher_id UUID REFERENCES teachers(id) ON DELETE CASCADE,
@@ -187,6 +197,7 @@ CREATE TABLE IF NOT EXISTS journals (
     date DATE NOT NULL,
     start_time TIME,
     end_time TIME,
+    subject_name VARCHAR(100), -- Denormalisasi untuk pelaporan mudah
     activity TEXT NOT NULL,
     reflection TEXT,
     follow_up TEXT,
@@ -194,8 +205,6 @@ CREATE TABLE IF NOT EXISTS journals (
 );
 
 -- 4. ROW LEVEL SECURITY (RLS) POLICIES
--- Fix: Drop policy lama jika ada untuk menghindari Error 42710 saat re-run
-
 -- Enable RLS
 ALTER TABLE schools ENABLE ROW LEVEL SECURITY;
 ALTER TABLE teachers ENABLE ROW LEVEL SECURITY;
@@ -212,7 +221,8 @@ ALTER TABLE student_grades ENABLE ROW LEVEL SECURITY;
 ALTER TABLE student_attitudes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE journals ENABLE ROW LEVEL SECURITY;
 
--- Re-create Policies Safely
+-- Policies (Simplified for prototype: Authenticated users can do everything)
+-- In production, you would restrict based on user_id = auth.uid()
 
 DROP POLICY IF EXISTS "Allow authenticated access to schools" ON schools;
 CREATE POLICY "Allow authenticated access to schools" ON schools FOR ALL TO authenticated USING (true) WITH CHECK (true);

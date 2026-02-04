@@ -1,6 +1,6 @@
 
 -- =================================================================
--- LANGKAH 2: SEED USER ADMIN
+-- LANGKAH 2: SEED USER ADMIN (UPDATED)
 -- 
 -- SYARAT: Pastikan Anda sudah menjalankan 'migration_role.sql' 
 --         terlebih dahulu agar role 'ADMIN' dikenali.
@@ -88,21 +88,23 @@ BEGIN
         );
 
         -- E. Insert ke PUBLIC.TEACHERS (Data Aplikasi)
-        -- Role 'ADMIN' di sini aman digunakan KARENA migration_role.sql sudah dijalankan terpisah
+        -- UPDATED: Menambahkan is_active = TRUE
         INSERT INTO public.teachers (
             user_id,
             school_id,
             email,
             full_name,
             nip,
-            role
+            role,
+            is_active
         ) VALUES (
             new_user_id,
             school_id_val,
             'admin@siguru.com',
             'Super Admin',
             '00000000',
-            'ADMIN'
+            'ADMIN',
+            TRUE -- Admin harus langsung aktif
         );
         
         RAISE NOTICE 'User Admin berhasil dibuat. Login: admin@siguru.com / admin123';

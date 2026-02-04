@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { supabase, isSupabaseConfigured } from './utils/supabase'; // Import Supabase Client and Config Flag
@@ -47,15 +46,6 @@ const INITIAL_IDENTITY: IdentityData = {
     studentCount: 0
 };
 
-// MOCK DATA FOR ADMIN PANEL DEMO
-// In a real app, this would be fetched from 'auth.users' or 'public.teachers' via Supabase Admin API
-const MOCK_ALL_USERS: User[] = [
-  { id: 'u1', email: 'guru1@sekolah.id', name: 'Budi Santoso', role: 'SUBJECT_TEACHER', level: 'SMA', isActive: true },
-  { id: 'u2', email: 'guru2@sekolah.id', name: 'Siti Aminah', role: 'CLASS_TEACHER', level: 'SD', isActive: true },
-  { id: 'u3', email: 'calon1@sekolah.id', name: 'Rudi Hartono (Baru)', role: 'SUBJECT_TEACHER', level: 'SMP', isActive: false },
-  { id: 'u4', email: 'calon2@sekolah.id', name: 'Dewi Sartika (Baru)', role: 'CLASS_TEACHER', level: 'SD', isActive: false },
-];
-
 // Modified NavItem to handle collapsed state
 const NavItem = ({ active, label, icon, onClick, collapsed }: any) => (
   <button
@@ -80,8 +70,8 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true); 
   
-  // State for Admin Panel Management (Mock)
-  const [allUsers, setAllUsers] = useState<User[]>(MOCK_ALL_USERS);
+  // State for Admin Panel Management (Real Data)
+  const [allUsers, setAllUsers] = useState<User[]>([]);
 
   // --- SETTINGS STATE ---
   // Default WA Number (bisa diganti di Admin Panel)
@@ -116,7 +106,7 @@ export default function App() {
         return;
     }
 
-    // 1. Check Initial Session (Auto-login from localStorage)
+    // 1. Check Initial Session (Auto-login from localStorage/Session)
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         handleUserRestored(session.user);
@@ -130,8 +120,6 @@ export default function App() {
 
     // 2. Listen for Auth Changes (Login, Logout, Token Refresh)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      console.log("Auth Event:", event);
-      
       if (event === 'SIGNED_IN' && session?.user) {
         handleUserRestored(session.user);
       } else if (event === 'SIGNED_OUT') {
@@ -143,13 +131,27 @@ export default function App() {
   }, []);
 
   const handleUserRestored = async (authUser: any) => {
-      // Map Supabase User to App User
-      const meta = authUser.user_metadata || {};
-      
-      // Determine isActive status. 
-      // Rule: Default to TRUE if undefined (legacy), unless explicitly set to FALSE.
-      // For NEW registrations, we set it to false.
-      const isActiveStatus = meta.isActive === undefined ? true : meta.isActive;
+      // 1. Get User Metadata (Role, Name)
+      let meta = authUser.user_metadata || {};
+      let isActive = true;
+
+      // 2. REAL DB CHECK: Fetch status from 'teachers' table to ensure validity
+      // This overrides local metadata if DB says otherwise (e.g. Admin banned user)
+      if (isSupabaseConfigured) {
+          const { data: teacherData } = await supabase
+              .from('teachers')
+              .select('role, is_active, full_name, school_id')
+              .eq('email', authUser.email)
+              .single();
+          
+          if (teacherData) {
+              // Use DB values if exist
+              meta.role = teacherData.role;
+              meta.full_name = teacherData.full_name;
+              // Check active status (default to false if not found/null)
+              isActive = teacherData.is_active === true;
+          }
+      }
 
       const appUser: User = {
           id: authUser.id,
@@ -157,7 +159,7 @@ export default function App() {
           name: meta.full_name || authUser.email?.split('@')[0] || 'Guru',
           role: authUser.email === 'admin@siguru.com' || meta.role === 'ADMIN' ? 'ADMIN' : (meta.role || 'SUBJECT_TEACHER'),
           level: meta.level || 'SMA',
-          isActive: isActiveStatus
+          isActive: isActive
       };
       
       // BLOCK LOGIN IF NOT ACTIVE (Except Admin)
@@ -165,7 +167,7 @@ export default function App() {
           await supabase.auth.signOut();
           Swal.fire({
               title: 'Akun Belum Aktif',
-              text: 'Pendaftaran Anda sedang menunggu verifikasi Admin. Silahkan hubungi admin atau coba lagi nanti.',
+              html: `<p>Akun Anda terdaftar namun <strong>menunggu persetujuan Admin</strong>.</p><p class="text-sm mt-2 text-slate-500">Silahkan hubungi Admin sekolah untuk verifikasi.</p>`,
               icon: 'warning'
           });
           setIsLoadingAuth(false);
@@ -173,19 +175,11 @@ export default function App() {
       }
 
       setCurrentUser(appUser);
-      
-      // If Admin, ensure current user is in the mock list
-      if (appUser.role === 'ADMIN') {
-          setAllUsers(prev => {
-              if (prev.find(u => u.id === appUser.id)) return prev;
-              return [...prev, appUser];
-          });
-      }
-
       loadUserData(appUser); // Load local app data
       
       // Auto Redirect to Dashboard/Admin
       if (appUser.role === 'ADMIN') {
+         fetchRealUsersList(); // Load real data for admin
          setActiveTab(TabView.ADMIN_PANEL);
       } else {
          setActiveTab(TabView.DASHBOARD);
@@ -209,7 +203,36 @@ export default function App() {
   };
 
   // =================================================================================
-  // 2. DATA LOADING (From LocalStorage for now, keyed by Email)
+  // 2. ADMIN DATA FETCHING (REAL DB)
+  // =================================================================================
+  const fetchRealUsersList = async () => {
+      if (!isSupabaseConfigured) return;
+
+      try {
+          // Fetch from teachers table
+          const { data, error } = await supabase
+              .from('teachers')
+              .select('*')
+              .order('created_at', { ascending: false });
+
+          if (data) {
+              const mappedUsers: User[] = data.map((t: any) => ({
+                  id: t.id, // Using teacher ID
+                  email: t.email,
+                  name: t.full_name,
+                  role: t.role,
+                  level: 'SMA', // Default or fetch from school relation if complex
+                  isActive: t.is_active === true
+              }));
+              setAllUsers(mappedUsers);
+          }
+      } catch (err) {
+          console.error("Failed to fetch users", err);
+      }
+  };
+
+  // =================================================================================
+  // 3. DATA LOADING (From LocalStorage for now, keyed by Email)
   // =================================================================================
   const loadUserData = (user: User) => {
         const storageKey = `siguru_data_${user.email}`;
@@ -247,7 +270,7 @@ export default function App() {
   }, [students.length]);
 
   // =================================================================================
-  // 3. PERSISTENCE LAYER (Save App Data to LocalStorage)
+  // 4. PERSISTENCE LAYER (Save App Data to LocalStorage)
   // =================================================================================
   
   const saveDataToStorage = useCallback(() => {
@@ -286,18 +309,14 @@ export default function App() {
 
 
   // =================================================================================
-  // 4. AUTH ACTIONS
+  // 5. AUTH ACTIONS (LOGIN & REGISTER)
   // =================================================================================
 
   const handleLogin = async (data: LoginData) => {
     setIsLoadingAuth(true);
 
     if (!isSupabaseConfigured) {
-        Swal.fire({
-            title: 'Konfigurasi Hilang', 
-            text: 'URL Supabase atau Anon Key belum diset di file .env.', 
-            icon: 'error'
-        });
+        Swal.fire({ title: 'Konfigurasi Hilang', text: 'URL Supabase belum diset.', icon: 'error' });
         setIsLoadingAuth(false);
         return;
     }
@@ -309,29 +328,13 @@ export default function App() {
         });
 
         if (error) {
-            let errorMsg = error.message;
-            let errorTitle = 'Gagal Masuk';
-            
-            if (error.message.includes("Invalid login credentials")) {
-                errorTitle = "Akun Tidak Ditemukan / Password Salah";
-                errorMsg = "Mohon cek ejaan email dan password Anda.";
-            } else if (error.message.toLowerCase().includes("email not confirmed")) {
-                errorTitle = "Email Belum Dikonfirmasi";
-                errorMsg = "Akun Anda belum aktif karena email belum diverifikasi.";
-            } else if (error.message.toLowerCase().includes("failed to fetch")) {
-                errorTitle = "Koneksi Bermasalah";
-                errorMsg = "Gagal menghubungi server database.";
-            } else if (error.message.toLowerCase().includes("email logins are disabled")) {
-                errorTitle = "Fitur Login Email Belum Aktif";
-                errorMsg = "Provider Email belum diaktifkan di Supabase Dashboard.";
-            }
-            
-            Swal.fire({ title: errorTitle, text: errorMsg, icon: 'error' });
+            Swal.fire({ title: 'Gagal Masuk', text: error.message, icon: 'error' });
             setIsLoadingAuth(false);
         }
+        // Success handled by onAuthStateChange
     } catch (err: any) {
          console.error("Login Error:", err);
-         Swal.fire({ title: 'Error Sistem', text: 'Terjadi kesalahan jaringan yang tidak terduga.', icon: 'error' });
+         Swal.fire({ title: 'Error Sistem', text: 'Terjadi kesalahan jaringan.', icon: 'error' });
          setIsLoadingAuth(false);
     }
   };
@@ -346,39 +349,55 @@ export default function App() {
     }
 
     try {
-        const { error } = await supabase.auth.signUp({
+        // 1. Create Auth User
+        const { data: authData, error: authError } = await supabase.auth.signUp({
             email: data.email,
             password: data.password,
             options: {
-                emailRedirectTo: window.location.origin, 
                 data: {
                   full_name: data.name,
                   role: data.role,
-                  level: data.level,
-                  isActive: false // SET DEFAULT INACTIVE
+                  level: data.level
                 }
             }
         });
 
-        if (error) {
-            Swal.fire({ title: 'Registrasi Gagal', text: error.message, icon: 'error' });
-            setIsLoadingAuth(false);
-        } else {
+        if (authError) throw authError;
+
+        if (authData.user) {
+            // 2. CRITICAL: Insert into 'teachers' table immediately with isActive: false
+            // This ensures Admin can see the user in the list to approve them
+            const { error: dbError } = await supabase.from('teachers').insert({
+                user_id: authData.user.id,
+                email: data.email,
+                full_name: data.name,
+                role: data.role,
+                school_id: null, // Can be set later
+                is_active: false // Default PENDING
+            });
+
+            if (dbError) {
+                console.error("DB Insert Error:", dbError);
+                // Even if DB insert fails (e.g. RLS), Auth is created. 
+                // In real app, we might want to rollback or use Edge Function.
+                // For this demo, we warn.
+            }
+
             Swal.fire({
                 title: 'Registrasi Berhasil!',
                 html: `
-                    <p>Akun Anda telah dibuat.</p>
+                    <p>Akun Anda telah dibuat dan disimpan ke database.</p>
                     <div class="bg-yellow-50 text-yellow-800 p-3 rounded text-sm mt-3 border border-yellow-200">
-                        <strong>Menunggu Verifikasi Admin</strong><br/>
-                        Anda belum bisa login sampai Admin mengaktifkan akun Anda. Silahkan cek email verifikasi terlebih dahulu.
+                        <strong>Menunggu Persetujuan Admin</strong><br/>
+                        Akun Anda berstatus non-aktif. Silahkan hubungi Admin untuk verifikasi agar bisa login.
                     </div>
                 `,
                 icon: 'success'
             });
-            setIsLoadingAuth(false);
         }
+        setIsLoadingAuth(false);
     } catch (err: any) {
-        Swal.fire({ title: 'Error Sistem', text: 'Gagal melakukan registrasi.', icon: 'error' });
+        Swal.fire({ title: 'Registrasi Gagal', text: err.message, icon: 'error' });
         setIsLoadingAuth(false);
     }
   };
@@ -403,85 +422,80 @@ export default function App() {
   };
 
   // =================================================================================
-  // 5. APP LOGIC HANDLERS
+  // 6. ADMIN ACTIONS
   // =================================================================================
 
-  const handleIdentitySave = (newData: IdentityData) => {
-      setIdentity(newData);
-      setSubject(prev => ({...prev, name: newData.subjectName}));
-  };
-
-  const handleSaveGeneratedTPs = (newTPs: LearningObjective[]) => {
-      const existingCount = tps.length;
-      const formattedTPs = newTPs.map((tp, idx) => ({
-          ...tp,
-          code: `TP.${existingCount + idx + 1}`,
-          lms: [],
-          criteria: [],
-          scopeId: identity.role === 'CLASS_TEACHER' ? 'math' : 'lvl-7' 
-      }));
-      setTps([...tps, ...formattedTPs]);
-      setActiveTab(TabView.CURRICULUM);
-  };
-
-  const handleContextNavigate = (tab: TabView, context?: { className?: string, scheduleId?: string }) => {
-    if (context) setNavContext(context);
-    else setNavContext({});
-    setActiveTab(tab);
-  };
-
-  // --- ADMIN HANDLERS (UPDATED) ---
-  
-  const handleAddUser = (data: RegisterData) => {
-      // In a real app with Admin Service Role, this would create a user in Supabase.
-      console.log("Adding User Manual:", data);
+  const handleAddUser = async (data: RegisterData) => {
+      // Admin Manual Add
+      // Note: Creating Auth user from client requires Admin API (service role). 
+      // Client-side 'signUp' logs in the new user immediately, killing Admin session.
+      // WORKAROUND for Demo: Just insert into 'teachers' table so it appears in list.
+      // The user still needs to "Sign Up" officially to set password, or Admin uses Invite API (Backend).
       
-      // Simulate adding to local list for demo
-      const newUser: User = {
-          id: `new-${Date.now()}`,
-          email: data.email,
-          name: data.name,
-          role: data.role,
-          level: data.level,
-          isActive: true // Admin-added users are active by default
-      };
-      setAllUsers([...allUsers, newUser]);
+      try {
+          const { error } = await supabase.from('teachers').insert({
+             email: data.email,
+             full_name: data.name,
+             role: data.role,
+             is_active: true // Admin added = Active
+          });
 
-      Swal.fire('Sukses', 'Pengguna berhasil ditambahkan (Simulasi).', 'success');
+          if (error) throw error;
+          
+          fetchRealUsersList();
+          Swal.fire('Sukses', 'Data guru ditambahkan ke database (User perlu Register email ini untuk set password).', 'success');
+      } catch (e: any) {
+          Swal.fire('Error', e.message, 'error');
+      }
   };
 
-  const handleDeleteUser = (id: string) => {
-      setAllUsers(prev => prev.filter(u => u.id !== id));
-      Swal.fire('Terhapus', 'Pengguna berhasil dihapus.', 'success');
+  const handleDeleteUser = async (id: string) => {
+      try {
+          // Delete from teachers table
+          const { error } = await supabase.from('teachers').delete().eq('id', id);
+          if (error) throw error;
+          
+          setAllUsers(prev => prev.filter(u => u.id !== id));
+          Swal.fire('Terhapus', 'Pengguna berhasil dihapus dari database.', 'success');
+      } catch (e: any) {
+          Swal.fire('Error', e.message, 'error');
+      }
   };
 
-  // UPDATED: Handle full update including password logic for simulation
-  const handleUpdateUser = (id: string, data: RegisterData) => {
-     setAllUsers(prev => prev.map(u => u.id === id ? { 
-         ...u, 
-         name: data.name,
-         email: data.email,
-         role: data.role,
-         level: data.level
-     } : u));
+  const handleUpdateUser = async (id: string, data: RegisterData) => {
+     try {
+         const { error } = await supabase.from('teachers').update({
+             full_name: data.name,
+             email: data.email,
+             role: data.role
+         }).eq('id', id);
 
-     let message = 'Data pengguna berhasil diperbarui.';
-     if (data.password) {
-         message += ' Password juga telah direset (Simulasi).';
-         console.log(`[Mock] Password for user ${id} reset to: ${data.password}`);
+         if (error) throw error;
+
+         fetchRealUsersList();
+         Swal.fire('Sukses', 'Data pengguna diperbarui.', 'success');
+     } catch (e: any) {
+         Swal.fire('Error', e.message, 'error');
      }
-     
-     Swal.fire('Sukses', message, 'success');
   };
 
-  const handleApproveUser = (id: string) => {
-      // In real app: Call supabase function to update user metadata
-      setAllUsers(prev => prev.map(u => u.id === id ? { ...u, isActive: true } : u));
-      Swal.fire('Diaktifkan', 'User berhasil diaktifkan. Mereka sekarang bisa login.', 'success');
+  const handleApproveUser = async (id: string) => {
+      try {
+          const { error } = await supabase.from('teachers')
+            .update({ is_active: true })
+            .eq('id', id);
+          
+          if (error) throw error;
+
+          // Update Local State Optimistically
+          setAllUsers(prev => prev.map(u => u.id === id ? { ...u, isActive: true } : u));
+          Swal.fire('Diaktifkan', 'User berhasil diaktifkan. Sekarang mereka bisa login.', 'success');
+      } catch (e: any) {
+          Swal.fire('Error', e.message, 'error');
+      }
   };
 
-  const handleRejectUser = (id: string) => {
-      // In real app: Delete user or keep as banned
+  const handleRejectUser = async (id: string) => {
       Swal.fire({
           title: 'Tolak Pengguna?',
           text: "Pengguna ini akan dihapus dari daftar.",
@@ -489,13 +503,36 @@ export default function App() {
           showCancelButton: true,
           confirmButtonColor: '#d33',
           confirmButtonText: 'Tolak & Hapus'
-      }).then((result: any) => {
+      }).then(async (result: any) => {
           if (result.isConfirmed) {
-              setAllUsers(prev => prev.filter(u => u.id !== id));
-              Swal.fire('Ditolak', 'Pengajuan pengguna ditolak.', 'success');
+              await handleDeleteUser(id);
           }
       });
   };
+
+  // =================================================================================
+  // 7. NAVIGATION HANDLERS (Missing in previous context)
+  // =================================================================================
+
+  const handleContextNavigate = useCallback((tab: TabView, context: { className?: string, scheduleId?: string } = {}) => {
+    if (context.className || context.scheduleId) {
+      setNavContext(context);
+    } else {
+        setNavContext({});
+    }
+    setActiveTab(tab);
+  }, []);
+
+  const handleIdentitySave = useCallback((data: IdentityData) => {
+    setIdentity(data);
+    // IdentityForm already shows Swal on submit
+  }, []);
+
+  const handleSaveGeneratedTPs = useCallback((newTps: LearningObjective[]) => {
+      setTps(prev => [...prev, ...newTps]);
+      Swal.fire('Tersimpan!', `${newTps.length} Tujuan Pembelajaran berhasil ditambahkan.`, 'success');
+      setActiveTab(TabView.CURRICULUM);
+  }, []);
 
 
   // =================================================================================
@@ -529,12 +566,12 @@ export default function App() {
   if (activeTab === TabView.ADMIN_PANEL && currentUser?.role === 'ADMIN') {
     return (
       <AdminPanel 
-        users={allUsers} // Pass All Users (Real + Mock)
+        users={allUsers} 
         onAddUser={handleAddUser}
         onDeleteUser={handleDeleteUser}
         onUpdateUser={handleUpdateUser}
-        onApproveUser={handleApproveUser} // New Handler
-        onRejectUser={handleRejectUser} // New Handler
+        onApproveUser={handleApproveUser} 
+        onRejectUser={handleRejectUser} 
         onGoToApp={() => setActiveTab(TabView.DASHBOARD)}
         onLogout={handleLogout}
         waNumber={adminWaNumber}

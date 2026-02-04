@@ -1,7 +1,6 @@
-
 import React, { useState } from 'react';
 import { LearningObjective } from '../types';
-import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
+import { GoogleGenAI, Type } from "@google/genai";
 
 declare const Swal: any;
 
@@ -41,33 +40,9 @@ export const CPGenerator: React.FC<Props> = ({ onSave, onBack }) => {
     setSem2Items([]);
 
     try {
-        // Initialize SDK
-        const genAI = new GoogleGenerativeAI(process.env.API_KEY || '');
-        // Menggunakan model Gemini 2.5 Flash sesuai permintaan
-        const model = genAI.getGenerativeModel({
-            model: "gemini-2.5-flash-preview",
-            generationConfig: {
-                responseMimeType: "application/json",
-                responseSchema: {
-                    type: SchemaType.ARRAY,
-                    items: {
-                        type: SchemaType.OBJECT,
-                        properties: {
-                            tp_description: {
-                                type: SchemaType.STRING,
-                                description: "Deskripsi lengkap tujuan pembelajaran"
-                            },
-                            bloom_level: {
-                                type: SchemaType.STRING,
-                                description: "Level kognitif (C1-C6)"
-                            }
-                        },
-                        required: ["tp_description"]
-                    }
-                }
-            }
-        });
-
+        // Initialize SDK with key from env
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        
         const prompt = `
         Tugas: Analisis teks Capaian Pembelajaran (CP) berikut untuk jenjang ${level} ${phase}.
         
@@ -80,8 +55,32 @@ export const CPGenerator: React.FC<Props> = ({ onSave, onBack }) => {
         "${cpText}"
         `;
 
-        const result = await model.generateContent(prompt);
-        const responseText = result.response.text();
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash-preview",
+            contents: prompt,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.ARRAY,
+                    items: {
+                        type: Type.OBJECT,
+                        properties: {
+                            tp_description: {
+                                type: Type.STRING,
+                                description: "Deskripsi lengkap tujuan pembelajaran"
+                            },
+                            bloom_level: {
+                                type: Type.STRING,
+                                description: "Level kognitif (C1-C6)"
+                            }
+                        },
+                        required: ["tp_description"]
+                    }
+                }
+            }
+        });
+
+        const responseText = response.text;
 
         if (responseText) {
             const rawData = JSON.parse(responseText);

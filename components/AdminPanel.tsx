@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { User, SchoolLevel, TeacherRole } from '../types';
 import { RegisterData } from './LoginPage'; // Re-use RegisterData type
@@ -28,6 +27,7 @@ export const AdminPanel: React.FC<Props> = ({
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [userTab, setUserTab] = useState<'ACTIVE' | 'PENDING'>('ACTIVE'); 
+  const [showPassword, setShowPassword] = useState(false); // Visibility State
   
   // Settings State
   const [tempWaNumber, setTempWaNumber] = useState(waNumber);
@@ -66,6 +66,7 @@ export const AdminPanel: React.FC<Props> = ({
   }, [users, searchQuery, userTab]);
 
   const handleOpenModal = (user?: User) => {
+    setShowPassword(false); // Reset visibility
     if (user) {
       setEditingUser(user);
       // Untuk edit, load data existing. Password dikosongkan.
@@ -429,15 +430,27 @@ export const AdminPanel: React.FC<Props> = ({
                      <label className="text-xs font-bold text-slate-500 uppercase">
                         {editingUser ? 'Reset Password' : 'Password'} <span className="text-red-500">{!editingUser && '*'}</span>
                      </label>
-                     <input 
-                        type="password" 
-                        // Required only if new user
-                        required={!editingUser}
-                        className="w-full border-slate-200 rounded-lg text-sm font-bold text-slate-900 focus:ring-2 focus:ring-primary focus:border-transparent bg-white"
-                        placeholder={editingUser ? "Kosongkan jika tidak ingin mengubah" : "••••••••"}
-                        value={formData.password}
-                        onChange={e => setFormData({...formData, password: e.target.value})}
-                     />
+                     <div className="relative">
+                        <input 
+                            type={showPassword ? "text" : "password"} 
+                            // Required only if new user
+                            required={!editingUser}
+                            className="w-full border-slate-200 rounded-lg text-sm font-bold text-slate-900 focus:ring-2 focus:ring-primary focus:border-transparent bg-white pr-10"
+                            placeholder={editingUser ? "Kosongkan jika tidak ingin mengubah" : "••••••••"}
+                            value={formData.password}
+                            onChange={e => setFormData({...formData, password: e.target.value})}
+                        />
+                        <button 
+                            type="button" 
+                            onClick={() => setShowPassword(!showPassword)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none"
+                            title={showPassword ? "Sembunyikan" : "Tampilkan"}
+                        >
+                            <span className="material-symbols-outlined text-[20px]">
+                                {showPassword ? 'visibility_off' : 'visibility'}
+                            </span>
+                        </button>
+                     </div>
                      {editingUser && <p className="text-[10px] text-slate-400">Isi hanya jika ingin mereset password pengguna ini.</p>}
                   </div>
 
