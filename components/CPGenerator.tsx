@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { LearningObjective } from '../types';
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 
 declare const Swal: any;
 
@@ -41,8 +41,33 @@ export const CPGenerator: React.FC<Props> = ({ onSave, onBack }) => {
     setSem2Items([]);
 
     try {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        
+        // Initialize SDK
+        const genAI = new GoogleGenerativeAI(process.env.API_KEY || '');
+        // Menggunakan model Gemini 2.5 Flash sesuai permintaan
+        const model = genAI.getGenerativeModel({
+            model: "gemini-2.5-flash-preview",
+            generationConfig: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: SchemaType.ARRAY,
+                    items: {
+                        type: SchemaType.OBJECT,
+                        properties: {
+                            tp_description: {
+                                type: SchemaType.STRING,
+                                description: "Deskripsi lengkap tujuan pembelajaran"
+                            },
+                            bloom_level: {
+                                type: SchemaType.STRING,
+                                description: "Level kognitif (C1-C6)"
+                            }
+                        },
+                        required: ["tp_description"]
+                    }
+                }
+            }
+        });
+
         const prompt = `
         Tugas: Analisis teks Capaian Pembelajaran (CP) berikut untuk jenjang ${level} ${phase}.
         
@@ -55,33 +80,11 @@ export const CPGenerator: React.FC<Props> = ({ onSave, onBack }) => {
         "${cpText}"
         `;
 
-        const response = await ai.models.generateContent({
-            model: "gemini-3-flash-preview", 
-            contents: prompt,
-            config: {
-                responseMimeType: "application/json",
-                responseSchema: {
-                    type: Type.ARRAY,
-                    items: {
-                        type: Type.OBJECT,
-                        properties: {
-                            tp_description: {
-                                type: Type.STRING,
-                                description: "Deskripsi lengkap tujuan pembelajaran"
-                            },
-                            bloom_level: {
-                                type: Type.STRING,
-                                description: "Level kognitif (C1-C6)"
-                            }
-                        },
-                        required: ["tp_description"]
-                    }
-                }
-            }
-        });
+        const result = await model.generateContent(prompt);
+        const responseText = result.response.text();
 
-        if (response.text) {
-            const rawData = JSON.parse(response.text);
+        if (responseText) {
+            const rawData = JSON.parse(responseText);
             
             // Map AI response to our App Type
             const results: LearningObjective[] = rawData.map((item: any, index: number) => ({
@@ -94,7 +97,7 @@ export const CPGenerator: React.FC<Props> = ({ onSave, onBack }) => {
             }));
 
             setGeneratedItems(results);
-            Swal.fire('Sukses', `Berhasil menghasilkan ${results.length} TP.`, 'success');
+            Swal.fire('Sukses', `Berhasil menghasilkan ${results.length} TP menggunakan Gemini 2.5 Flash.`, 'success');
         }
 
     } catch (error: any) {
@@ -246,7 +249,7 @@ export const CPGenerator: React.FC<Props> = ({ onSave, onBack }) => {
                 <span className="material-symbols-outlined text-4xl text-purple-600">psychology_alt</span>
                 AI TP Generator
              </h2>
-             <p className="text-slate-500 text-base">Ubah narasi Capaian Pembelajaran (CP) menjadi Tujuan Pembelajaran (TP) siap pakai secara otomatis menggunakan <strong>Google Gemini AI</strong>.</p>
+             <p className="text-slate-500 text-base">Ubah narasi Capaian Pembelajaran (CP) menjadi Tujuan Pembelajaran (TP) siap pakai secara otomatis menggunakan <strong>Google Gemini 2.5 Flash</strong>.</p>
         </div>
         <div className="flex gap-2">
             <button 

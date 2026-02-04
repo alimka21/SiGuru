@@ -741,6 +741,7 @@ export default function App() {
 
                 {activeTab === TabView.STUDENT_MASTER && (
                     <StudentManager 
+                        identity={identity}
                         students={students}
                         classes={classes}
                         onUpdateStudents={setStudents}

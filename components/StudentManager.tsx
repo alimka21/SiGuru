@@ -1,11 +1,12 @@
 
 import React, { useState, useMemo, useRef } from 'react';
 import ExcelJS from 'exceljs';
-import { Student, ClassInfo } from '../types';
+import { Student, ClassInfo, IdentityData } from '../types';
 
 declare const Swal: any;
 
 interface Props {
+  identity: IdentityData;
   students: Student[];
   classes: ClassInfo[];
   onUpdateStudents: (students: Student[]) => void;
@@ -18,7 +19,7 @@ const toTitleCase = (str: string) => {
     return str.toLowerCase().replace(/\b\w/g, s => s.toUpperCase());
 };
 
-export const StudentManager: React.FC<Props> = ({ students, classes, onUpdateStudents, onUpdateClasses, onBack }) => {
+export const StudentManager: React.FC<Props> = ({ identity, students, classes, onUpdateStudents, onUpdateClasses, onBack }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -56,13 +57,26 @@ export const StudentManager: React.FC<Props> = ({ students, classes, onUpdateStu
               className: student.className || '',
               status: 'Aktif'
           });
+          setIsModalOpen(true);
       } else {
+          // VALIDATION: Prevent adding student if no classes exist
+          if (classes.length === 0) {
+              Swal.fire({
+                  title: 'Data Kelas Kosong',
+                  text: 'Anda belum memiliki data Kelas. Silahkan buat Kelas terlebih dahulu di menu "Master Kelas" sebelum menambahkan siswa.',
+                  icon: 'warning',
+                  confirmButtonText: 'Oke, Mengerti',
+                  confirmButtonColor: '#137fec'
+              });
+              return;
+          }
+
           setEditingId(null);
-          // Set default class if available
+          // Set default class if available (safe now because we checked length)
           const defaultClass = classes.length > 0 ? classes[0].name : '';
           setFormData({ name: '', nis: '', gender: 'L', className: defaultClass, status: 'Aktif' });
+          setIsModalOpen(true);
       }
-      setIsModalOpen(true);
   };
 
   const handleSaveStudent = (e: React.FormEvent) => {
@@ -471,6 +485,16 @@ export const StudentManager: React.FC<Props> = ({ students, classes, onUpdateStu
                       </button>
                   </div>
                   <form onSubmit={handleSaveStudent} className="p-6 space-y-4">
+                      
+                      {/* Context Information (Auto-filled) */}
+                      <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 flex items-center gap-3">
+                          <span className="material-symbols-outlined text-blue-600">school</span>
+                          <div>
+                              <p className="text-[10px] font-bold text-blue-500 uppercase">Jenjang Sekolah (Otomatis)</p>
+                              <p className="text-sm font-bold text-blue-900">{identity.schoolName} ({identity.level})</p>
+                          </div>
+                      </div>
+
                       <div className="space-y-2">
                           <label className="text-sm font-bold text-slate-700">Nama Lengkap <span className="text-red-500">*</span></label>
                           <input 
