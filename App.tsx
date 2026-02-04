@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { supabase, isSupabaseConfigured } from './utils/supabase'; // Import Supabase Client and Config Flag
@@ -133,23 +134,46 @@ export default function App() {
   const handleUserRestored = async (authUser: any) => {
       // 1. Get User Metadata (Role, Name)
       let meta = authUser.user_metadata || {};
-      let isActive = true;
+      let isActive = false; // Default false (paranoid security)
 
       // 2. REAL DB CHECK: Fetch status from 'teachers' table to ensure validity
-      // This overrides local metadata if DB says otherwise (e.g. Admin banned user)
+      // SKENARIO C: Gatekeeper Check
       if (isSupabaseConfigured) {
-          const { data: teacherData } = await supabase
-              .from('teachers')
-              .select('role, is_active, full_name, school_id')
-              .eq('email', authUser.email)
-              .single();
-          
-          if (teacherData) {
-              // Use DB values if exist
-              meta.role = teacherData.role;
-              meta.full_name = teacherData.full_name;
-              // Check active status (default to false if not found/null)
-              isActive = teacherData.is_active === true;
+          try {
+            const { data: teacherData, error } = await supabase
+                .from('teachers')
+                .select('role, is_active, full_name, school_id, level')
+                .eq('email', authUser.email)
+                .single();
+            
+            if (teacherData) {
+                meta.role = teacherData.role;
+                meta.full_name = teacherData.full_name;
+                meta.level = teacherData.level; 
+                // SAFETY: Ensure explicit TRUE check (handles NULL as FALSE)
+                isActive = teacherData.is_active === true;
+            } else if (error) {
+                // SPECIAL HANDLING FOR SCHEMA ERROR
+                if (error.message?.includes('querying schema') || error.code === 'PGRST200') {
+                     Swal.fire({
+                        title: 'Database Schema Error',
+                        html: `<div class="text-left text-sm">
+                                <p>Terdeteksi perubahan struktur database yang belum dimuat ulang.</p>
+                                <p class="mt-2 text-red-500 font-bold">${error.message}</p>
+                                <p class="mt-2">Solusi: Jalankan script <b>fix_complete_schema_and_alimka.sql</b> di Supabase SQL Editor untuk memperbaiki kolom & me-refresh cache.</p>
+                               </div>`,
+                        icon: 'error'
+                     });
+                     setIsLoadingAuth(false);
+                     return; // STOP execution
+                }
+
+                if (error.code !== 'PGRST116') {
+                     console.error("Error fetching teacher:", error);
+                }
+            }
+          } catch (e) {
+              console.error("Auth restore error", e);
           }
       }
 
@@ -162,13 +186,22 @@ export default function App() {
           isActive: isActive
       };
       
-      // BLOCK LOGIN IF NOT ACTIVE (Except Admin)
-      if (!appUser.isActive && appUser.role !== 'ADMIN') {
+      // BLOCK LOGIN IF NOT ACTIVE (Except Admin Email hardcoded)
+      if (!appUser.isActive && appUser.email !== 'admin@siguru.com') {
+          // Force Logout immediately
           await supabase.auth.signOut();
+          
           Swal.fire({
               title: 'Akun Belum Aktif',
-              html: `<p>Akun Anda terdaftar namun <strong>menunggu persetujuan Admin</strong>.</p><p class="text-sm mt-2 text-slate-500">Silahkan hubungi Admin sekolah untuk verifikasi.</p>`,
-              icon: 'warning'
+              html: `
+                <div class="text-left">
+                    <p class="mb-2">Halo <strong>${appUser.name}</strong>,</p>
+                    <p>Pendaftaran Anda berhasil, namun akun ini masih berstatus <strong>PENDING</strong>.</p>
+                    <p class="mt-2 text-sm text-slate-500">Silahkan hubungi Admin sekolah untuk melakukan verifikasi dan aktivasi akun.</p>
+                </div>
+              `,
+              icon: 'warning',
+              confirmButtonText: 'Kembali'
           });
           setIsLoadingAuth(false);
           return;
@@ -221,7 +254,7 @@ export default function App() {
                   email: t.email,
                   name: t.full_name,
                   role: t.role,
-                  level: 'SMA', // Default or fetch from school relation if complex
+                  level: t.level || 'SMA', // Fetch real level from DB
                   isActive: t.is_active === true
               }));
               setAllUsers(mappedUsers);
@@ -232,7 +265,7 @@ export default function App() {
   };
 
   // =================================================================================
-  // 3. DATA LOADING (From LocalStorage for now, keyed by Email)
+  // 3. DATA LOADING & 4. PERSISTENCE LAYER (Sama seperti sebelumnya)
   // =================================================================================
   const loadUserData = (user: User) => {
         const storageKey = `siguru_data_${user.email}`;
@@ -254,45 +287,28 @@ export default function App() {
             console.error("Failed to parse saved data", e);
           }
         } else {
-            // Defaults for new user -> APPLY REGISTERED ROLE & LEVEL
             setIdentity({
               ...INITIAL_IDENTITY, 
               teacherName: user.name,
-              role: user.role === 'ADMIN' ? 'SUBJECT_TEACHER' : user.role, // Default fallback if admin logs in to app view
+              role: user.role === 'ADMIN' ? 'SUBJECT_TEACHER' : user.role, 
               level: user.level || 'SMA'
             });
         }
   };
 
-  // Update student count in Identity
   useEffect(() => {
     setIdentity(prev => ({ ...prev, studentCount: students.length }));
   }, [students.length]);
 
-  // =================================================================================
-  // 4. PERSISTENCE LAYER (Save App Data to LocalStorage)
-  // =================================================================================
-  
   const saveDataToStorage = useCallback(() => {
     if (!currentUser) return;
-    
-    // Save App Data locally (separate from Auth Session)
     const storageKey = `siguru_data_${currentUser.email}`;
     const payload: UserStorageData = {
-      identity,
-      students,
-      classes,
-      schedules,
-      tps,
-      subject,
-      attendanceData,
-      gradeData,
-      journals
+      identity, students, classes, schedules, tps, subject, attendanceData, gradeData, journals
     };
     localStorage.setItem(storageKey, JSON.stringify(payload));
   }, [currentUser, identity, students, classes, schedules, tps, subject, attendanceData, gradeData, journals]);
 
-  // Auto-save on data change
   useEffect(() => {
     if (currentUser && activeTab !== TabView.LOGIN && activeTab !== TabView.ADMIN_PANEL) {
       const timeout = setTimeout(saveDataToStorage, 1000); 
@@ -300,7 +316,6 @@ export default function App() {
     }
   }, [saveDataToStorage, currentUser, activeTab]);
 
-  // Update settings handler
   const handleUpdateWaNumber = (newNumber: string) => {
     setAdminWaNumber(newNumber);
     localStorage.setItem('siguru_admin_wa', newNumber);
@@ -328,10 +343,16 @@ export default function App() {
         });
 
         if (error) {
-            Swal.fire({ title: 'Gagal Masuk', text: error.message, icon: 'error' });
+            Swal.fire({ 
+                title: 'Gagal Masuk', 
+                text: error.message === 'Invalid login credentials' 
+                    ? 'Email atau Password salah.' 
+                    : error.message, 
+                icon: 'error' 
+            });
             setIsLoadingAuth(false);
         }
-        // Success handled by onAuthStateChange
+        // Success handled by onAuthStateChange -> handleUserRestored
     } catch (err: any) {
          console.error("Login Error:", err);
          Swal.fire({ title: 'Error Sistem', text: 'Terjadi kesalahan jaringan.', icon: 'error' });
@@ -349,7 +370,19 @@ export default function App() {
     }
 
     try {
-        // 1. Create Auth User
+        // SKENARIO B: Register Mandiri
+        // 1. Cek apakah user sudah ada di DB (misal didaftarkan Admin)
+        const { data: existingTeacher } = await supabase
+            .from('teachers')
+            .select('id, is_active')
+            .eq('email', data.email)
+            .single();
+
+        // 2. Jika sudah ada, kita update link ID-nya (ini case jika Admin add manual tanpa password)
+        // Tapi di skenario baru ini, admin add manual SUDAH punya password via RPC.
+        // Jadi case ini lebih untuk recovery atau re-register data lama.
+        
+        // Buat Auth User
         const { data: authData, error: authError } = await supabase.auth.signUp({
             email: data.email,
             password: data.password,
@@ -365,31 +398,36 @@ export default function App() {
         if (authError) throw authError;
 
         if (authData.user) {
-            // 2. CRITICAL: Insert into 'teachers' table immediately with isActive: false
-            // This ensures Admin can see the user in the list to approve them
-            const { error: dbError } = await supabase.from('teachers').insert({
-                user_id: authData.user.id,
-                email: data.email,
-                full_name: data.name,
-                role: data.role,
-                school_id: null, // Can be set later
-                is_active: false // Default PENDING
-            });
-
-            if (dbError) {
-                console.error("DB Insert Error:", dbError);
-                // Even if DB insert fails (e.g. RLS), Auth is created. 
-                // In real app, we might want to rollback or use Edge Function.
-                // For this demo, we warn.
+            if (existingTeacher) {
+                // Link Data Lama
+                await supabase.from('teachers').update({
+                    user_id: authData.user.id,
+                    full_name: data.name,
+                    role: data.role,
+                    level: data.level
+                }).eq('id', existingTeacher.id);
+            } else {
+                // Insert Data Baru (Status Default = FALSE via trigger or DB default)
+                await supabase.from('teachers').insert({
+                    user_id: authData.user.id,
+                    email: data.email,
+                    full_name: data.name,
+                    role: data.role,
+                    school_id: null,
+                    level: data.level,
+                    is_active: false // PENDING
+                });
             }
 
+            // Pesan Sukses (User akan otomatis login, lalu ditendang oleh handleUserRestored karena status false)
+            // Kita tampilkan pesan manual di sini agar UX lebih jelas sebelum redirect.
             Swal.fire({
                 title: 'Registrasi Berhasil!',
                 html: `
-                    <p>Akun Anda telah dibuat dan disimpan ke database.</p>
+                    <p>Akun Anda telah dibuat.</p>
                     <div class="bg-yellow-50 text-yellow-800 p-3 rounded text-sm mt-3 border border-yellow-200">
                         <strong>Menunggu Persetujuan Admin</strong><br/>
-                        Akun Anda berstatus non-aktif. Silahkan hubungi Admin untuk verifikasi agar bisa login.
+                        Akun Anda berstatus non-aktif. Silahkan hubungi Admin sekolah untuk verifikasi.
                     </div>
                 `,
                 icon: 'success'
@@ -422,36 +460,42 @@ export default function App() {
   };
 
   // =================================================================================
-  // 6. ADMIN ACTIONS
+  // 6. ADMIN ACTIONS (SKENARIO A & D)
   // =================================================================================
 
   const handleAddUser = async (data: RegisterData) => {
-      // Admin Manual Add
-      // Note: Creating Auth user from client requires Admin API (service role). 
-      // Client-side 'signUp' logs in the new user immediately, killing Admin session.
-      // WORKAROUND for Demo: Just insert into 'teachers' table so it appears in list.
-      // The user still needs to "Sign Up" officially to set password, or Admin uses Invite API (Backend).
-      
+      // SKENARIO A: Admin Add User Manual (RPC call)
       try {
-          const { error } = await supabase.from('teachers').insert({
-             email: data.email,
-             full_name: data.name,
-             role: data.role,
-             is_active: true // Admin added = Active
+          // Panggil fungsi Database 'create_new_user'
+          const { error } = await supabase.rpc('create_new_user', {
+              email: data.email,
+              password: data.password, // Admin sets password
+              full_name: data.name,
+              role: data.role,
+              level: data.level
           });
 
           if (error) throw error;
           
           fetchRealUsersList();
-          Swal.fire('Sukses', 'Data guru ditambahkan ke database (User perlu Register email ini untuk set password).', 'success');
+          Swal.fire({
+              title: 'User Berhasil Dibuat',
+              html: `
+                <p>User <strong>${data.name}</strong> ditambahkan dengan status <strong>AKTIF</strong>.</p>
+                <p class="text-sm mt-2 text-slate-500">Login: ${data.email} / Password: ${data.password}</p>
+              `,
+              icon: 'success'
+          });
       } catch (e: any) {
-          Swal.fire('Error', e.message, 'error');
+          Swal.fire('Gagal Membuat User', e.message, 'error');
       }
   };
 
   const handleDeleteUser = async (id: string) => {
       try {
-          // Delete from teachers table
+          // Delete from teachers table (Cascade should handle auth user if configured, 
+          // but usually we can't delete auth.user from client easily without another RPC. 
+          // For now, we delete profile, preventing login via Gatekeeper logic).
           const { error } = await supabase.from('teachers').delete().eq('id', id);
           if (error) throw error;
           
@@ -467,7 +511,8 @@ export default function App() {
          const { error } = await supabase.from('teachers').update({
              full_name: data.name,
              email: data.email,
-             role: data.role
+             role: data.role,
+             level: data.level
          }).eq('id', id);
 
          if (error) throw error;
@@ -480,6 +525,7 @@ export default function App() {
   };
 
   const handleApproveUser = async (id: string) => {
+      // SKENARIO D: Admin Approve User
       try {
           const { error } = await supabase.from('teachers')
             .update({ is_active: true })
@@ -525,7 +571,6 @@ export default function App() {
 
   const handleIdentitySave = useCallback((data: IdentityData) => {
     setIdentity(data);
-    // IdentityForm already shows Swal on submit
   }, []);
 
   const handleSaveGeneratedTPs = useCallback((newTps: LearningObjective[]) => {

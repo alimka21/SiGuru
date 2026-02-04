@@ -1,6 +1,7 @@
 
 import React, { useState } from 'react';
 import { TeacherRole, SchoolLevel } from '../types';
+import { supabase } from '../utils/supabase'; // Import supabase directly for validation check
 
 declare const Swal: any;
 
@@ -53,13 +54,43 @@ export const LoginPage: React.FC<Props> = ({ onLogin, onRegister, onDemoLogin, i
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (loginForm.email && loginForm.password) {
-      // Trim email to avoid whitespace issues
-      await onLogin({
-          email: loginForm.email.trim(),
-          password: loginForm.password
-      });
+      const email = loginForm.email.trim();
+      
+      // Attempt Login
+      try {
+         await onLogin({ email, password: loginForm.password });
+      } catch (error: any) {
+         // This catch block might not be reached if onLogin swallows error, 
+         // but if it propagates:
+         console.error(error);
+      }
+      
+      // Note: We can't easily detect "User exists in Teachers but not Auth" here inside the submit handler
+      // because onLogin is async void. The parent component handles the alert.
+      // However, we can improve the UX by checking the table if login fails.
+      // Let's rely on the Parent (App.tsx) handling standard errors, but maybe check here if needed?
+      // Actually, let's keep it simple: Standard error in App.tsx is fine, 
+      // but let's add a helper function here to check "Pre-registered" status if login fails.
     }
   };
+
+  const checkPreRegisteredStatus = async (email: string) => {
+      // Helper to give better feedback
+      const { data } = await supabase.from('teachers').select('id, is_active').eq('email', email).single();
+      if (data && data.is_active) {
+          Swal.fire({
+              title: 'Akun Belum Diaktivasi',
+              html: `Email <b>${email}</b> sudah didaftarkan oleh Admin.<br/>Silakan pindah ke tab <strong>"Daftar"</strong> dan buat password baru Anda untuk mengaktifkan akun.`,
+              icon: 'info',
+              confirmButtonText: 'Ke Menu Daftar'
+          }).then((res: any) => {
+              if(res.isConfirmed) {
+                  setMode('REGISTER');
+                  setRegisterForm(prev => ({...prev, email: email}));
+              }
+          });
+      }
+  }
 
   const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -201,7 +232,7 @@ export const LoginPage: React.FC<Props> = ({ onLogin, onRegister, onDemoLogin, i
                     {isLoading ? 'Memproses...' : 'Masuk ke Aplikasi'}
                 </button>
                 
-                <div className="text-center mt-2">
+                <div className="text-center mt-2 space-y-2">
                     <button 
                       type="button" 
                       onClick={handleForgotPassword}
@@ -209,6 +240,16 @@ export const LoginPage: React.FC<Props> = ({ onLogin, onRegister, onDemoLogin, i
                     >
                         Lupa Sandi?
                     </button>
+                    {/* Fallback Check Trigger for Users confused about registration */}
+                    <div>
+                         <button 
+                            type="button"
+                            onClick={() => checkPreRegisteredStatus(loginForm.email)}
+                            className="text-[10px] text-slate-400 hover:text-slate-600 underline"
+                        >
+                            Saya sudah didaftarkan admin tapi gagal login?
+                        </button>
+                    </div>
                 </div>
               </form>
           ) : (

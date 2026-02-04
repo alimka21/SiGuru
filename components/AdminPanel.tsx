@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { User, SchoolLevel, TeacherRole } from '../types';
 import { RegisterData } from './LoginPage'; // Re-use RegisterData type
@@ -27,7 +28,6 @@ export const AdminPanel: React.FC<Props> = ({
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [userTab, setUserTab] = useState<'ACTIVE' | 'PENDING'>('ACTIVE'); 
-  const [showPassword, setShowPassword] = useState(false); // Visibility State
   
   // Settings State
   const [tempWaNumber, setTempWaNumber] = useState(waNumber);
@@ -66,14 +66,13 @@ export const AdminPanel: React.FC<Props> = ({
   }, [users, searchQuery, userTab]);
 
   const handleOpenModal = (user?: User) => {
-    setShowPassword(false); // Reset visibility
     if (user) {
       setEditingUser(user);
-      // Untuk edit, load data existing. Password dikosongkan.
+      // Untuk edit, load data existing.
       setFormData({ 
           email: user.email, 
           name: user.name, 
-          password: '', // Kosong = tidak ubah password
+          password: '', // Password tidak digunakan saat Edit
           role: user.role, 
           level: user.level || 'SMA' 
       });
@@ -87,12 +86,16 @@ export const AdminPanel: React.FC<Props> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (editingUser) {
-      // Pass full formData including potential new password
+      // Update logic
       onUpdateUser(editingUser.id, formData);
     } else {
-      // Validasi Basic
-      if (!formData.email || !formData.password || !formData.name) {
-          Swal.fire('Error', 'Semua kolom wajib diisi.', 'error');
+      // Add logic (Skenario A)
+      if (!formData.email || !formData.name || !formData.password) {
+          Swal.fire('Error', 'Nama, Email, dan Password wajib diisi.', 'error');
+          return;
+      }
+      if (formData.password.length < 6) {
+          Swal.fire('Error', 'Password minimal 6 karakter.', 'error');
           return;
       }
       onAddUser(formData);
@@ -112,7 +115,6 @@ export const AdminPanel: React.FC<Props> = ({
     }).then((result: any) => {
       if (result.isConfirmed) {
         onDeleteUser(id);
-        Swal.fire('Terhapus!', 'Pengguna berhasil dihapus.', 'success');
       }
     });
   };
@@ -354,7 +356,6 @@ export const AdminPanel: React.FC<Props> = ({
                                                     </button>
                                                 </>
                                             ) : (
-                                                // MODIFIED: Removed hover opacity classes to make buttons always visible
                                                 <div className="flex gap-2">
                                                     <button onClick={() => handleOpenModal(user)} className="p-2 bg-white border border-slate-200 text-blue-600 hover:bg-blue-50 hover:border-blue-200 rounded-lg transition-colors shadow-sm" title="Edit">
                                                         <span className="material-symbols-outlined text-sm">edit</span>
@@ -390,13 +391,20 @@ export const AdminPanel: React.FC<Props> = ({
          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all scale-100">
                <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                  <h3 className="text-xl font-bold text-slate-900">{editingUser ? 'Edit Pengguna' : 'Tambah Pengguna Baru'}</h3>
+                  <h3 className="text-xl font-bold text-slate-900">{editingUser ? 'Edit Data Pengguna' : 'Tambah Akses Pengguna'}</h3>
                   <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-red-500 transition-colors">
                       <span className="material-symbols-outlined">close</span>
                   </button>
                </div>
                <form onSubmit={handleSubmit} className="p-6 space-y-4">
                   
+                  {/* Informasi Mode */}
+                  {!editingUser && (
+                     <div className="bg-blue-50 p-3 rounded-lg border border-blue-100 text-[11px] text-blue-700 leading-relaxed mb-2">
+                        <strong>Info:</strong> Admin membuat akun ini secara manual. User akan langsung berstatus <strong>AKTIF</strong> dan bisa login menggunakan password yang Anda buat di bawah.
+                     </div>
+                  )}
+
                   {/* Nama */}
                   <div className="space-y-1">
                      <label className="text-xs font-bold text-slate-500 uppercase">Nama Lengkap <span className="text-red-500">*</span></label>
@@ -416,43 +424,29 @@ export const AdminPanel: React.FC<Props> = ({
                      <input 
                         type="email" 
                         required 
-                        // MODIFIED: Removed disabled, allowing admin to fix email typos
                         className="w-full border-slate-200 rounded-lg text-sm font-bold text-slate-900 focus:ring-2 focus:ring-primary focus:border-transparent bg-white"
                         placeholder="contoh: guru@sekolah.id"
                         value={formData.email}
                         onChange={e => setFormData({...formData, email: e.target.value})}
                      />
-                     {editingUser && <p className="text-[10px] text-orange-500 flex items-center gap-1"><span className="material-symbols-outlined text-[10px]">warning</span> Mengubah email akan mengubah akses login user.</p>}
+                     {editingUser && <p className="text-[10px] text-orange-500 flex items-center gap-1 mt-1"><span className="material-symbols-outlined text-[10px]">warning</span> Mengubah email akan mengubah akses login user.</p>}
                   </div>
 
-                  {/* Password (Available for New and Edit now) */}
-                  <div className="space-y-1">
-                     <label className="text-xs font-bold text-slate-500 uppercase">
-                        {editingUser ? 'Reset Password' : 'Password'} <span className="text-red-500">{!editingUser && '*'}</span>
-                     </label>
-                     <div className="relative">
+                  {/* Password (Only for Create Mode in Scenario A) */}
+                  {!editingUser && (
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-500 uppercase">Buat Password Awal <span className="text-red-500">*</span></label>
                         <input 
-                            type={showPassword ? "text" : "password"} 
-                            // Required only if new user
-                            required={!editingUser}
-                            className="w-full border-slate-200 rounded-lg text-sm font-bold text-slate-900 focus:ring-2 focus:ring-primary focus:border-transparent bg-white pr-10"
-                            placeholder={editingUser ? "Kosongkan jika tidak ingin mengubah" : "••••••••"}
+                            type="text" 
+                            required 
+                            className="w-full border-slate-200 rounded-lg text-sm font-bold text-slate-900 focus:ring-2 focus:ring-primary focus:border-transparent bg-white"
+                            placeholder="Minimal 6 karakter"
                             value={formData.password}
                             onChange={e => setFormData({...formData, password: e.target.value})}
                         />
-                        <button 
-                            type="button" 
-                            onClick={() => setShowPassword(!showPassword)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none"
-                            title={showPassword ? "Sembunyikan" : "Tampilkan"}
-                        >
-                            <span className="material-symbols-outlined text-[20px]">
-                                {showPassword ? 'visibility_off' : 'visibility'}
-                            </span>
-                        </button>
-                     </div>
-                     {editingUser && <p className="text-[10px] text-slate-400">Isi hanya jika ingin mereset password pengguna ini.</p>}
-                  </div>
+                        <p className="text-[10px] text-slate-400">Berikan password ini kepada guru tersebut.</p>
+                      </div>
+                  )}
 
                   {/* Role Selection */}
                   <div className="grid grid-cols-2 gap-3">
@@ -482,10 +476,30 @@ export const AdminPanel: React.FC<Props> = ({
                         </select>
                      </div>
                   </div>
+                  
+                  {/* Reset Password Button (Only for Edit Mode) */}
+                  {editingUser && (
+                      <div className="mt-4 p-3 bg-slate-50 rounded border border-slate-200 text-center">
+                          <p className="text-xs text-slate-500 mb-2">Admin tidak bisa melihat password user.</p>
+                          <button 
+                            type="button"
+                            onClick={() => {
+                                const msg = `Halo, silakan reset password akun SiGuru Anda (${formData.email}) melalui halaman Login > Lupa Sandi.`;
+                                window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+                            }}
+                            className="text-xs font-bold text-primary hover:underline flex items-center justify-center gap-1"
+                          >
+                             <span className="material-symbols-outlined text-xs">share</span>
+                             Kirim Instruksi Reset via WA
+                          </button>
+                      </div>
+                  )}
 
                   <div className="pt-4 flex gap-3">
                      <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-3 border border-slate-200 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition-colors">Batal</button>
-                     <button type="submit" className="flex-1 py-3 bg-primary text-white rounded-xl text-sm font-bold hover:bg-blue-600 shadow-lg shadow-blue-200 transition-colors">Simpan Data</button>
+                     <button type="submit" className="flex-1 py-3 bg-primary text-white rounded-xl text-sm font-bold hover:bg-blue-600 shadow-lg shadow-blue-200 transition-colors">
+                         {editingUser ? 'Update Data' : 'Buat User'}
+                     </button>
                   </div>
                </form>
             </div>
