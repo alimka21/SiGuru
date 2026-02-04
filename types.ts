@@ -25,6 +25,7 @@ export interface UserStorageData {
   subject: Subject;
   attendanceData: AttendanceData;
   gradeData: GradeData;
+  journals: JournalEntry[]; // Added Journals
 }
 
 export interface Student {
@@ -77,6 +78,23 @@ export interface Subject {
   id: string;
   name: string;
   kktp: number; 
+}
+
+// JOURNAL TYPES
+export interface JournalEntry {
+  id: string;
+  date: string;
+  scheduleId?: string; // Link to schedule if available
+  subjectName: string; // Added Subject Name
+  className: string;
+  startTime: string;
+  endTime: string;
+  tpId: string; // Link to LearningObjective
+  lmId?: string; // Link to LearningMaterial (Optional)
+  activity: string; // Kegiatan Pembelajaran
+  reflection: string; // Refleksi Guru
+  followUp: string; // Tindak Lanjut
+  created_at: string;
 }
 
 export interface GradeData {
@@ -134,5 +152,6 @@ export enum TabView {
   GRADING = 'GRADING',
   ATTENDANCE = 'ATTENDANCE',
   RECAP_GRADES = 'RECAP_GRADES',      
-  RECAP_ATTENDANCE = 'RECAP_ATTENDANCE' 
+  RECAP_ATTENDANCE = 'RECAP_ATTENDANCE',
+  JOURNAL = 'JOURNAL' // Added Journal View
 }

@@ -1,5 +1,6 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
+import ExcelJS from 'exceljs';
 import { Student, ClassInfo } from '../types';
 
 declare const Swal: any;
@@ -8,6 +9,7 @@ interface Props {
   students: Student[];
   classes: ClassInfo[];
   onUpdateStudents: (students: Student[]) => void;
+  onUpdateClasses: (classes: ClassInfo[]) => void; // Added prop to update classes
   onBack: () => void;
 }
 
@@ -16,9 +18,10 @@ const toTitleCase = (str: string) => {
     return str.toLowerCase().replace(/\b\w/g, s => s.toUpperCase());
 };
 
-export const StudentManager: React.FC<Props> = ({ students, classes, onUpdateStudents, onBack }) => {
+export const StudentManager: React.FC<Props> = ({ students, classes, onUpdateStudents, onUpdateClasses, onBack }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   // FILTER STATE
   const [filterClass, setFilterClass] = useState<string>('');
@@ -91,8 +94,6 @@ export const StudentManager: React.FC<Props> = ({ students, classes, onUpdateStu
               name: formattedName,
               nis: formData.nis,
               className: formData.className,
-              // status and gender are managed in this form state but Student interface might need extension in real app
-              // For now we map to existing simple Student interface
           };
           onUpdateStudents([newStudent, ...students]);
       }
@@ -130,8 +131,193 @@ export const StudentManager: React.FC<Props> = ({ students, classes, onUpdateStu
       });
   };
 
+  // --- IMPORT / EXPORT LOGIC ---
+
+  const handleImportMenuClick = () => {
+      Swal.fire({
+          title: 'Import Data Siswa',
+          text: 'Silahkan unduh template terlebih dahulu, isi data, lalu upload kembali. Jika nama kelas di Excel belum ada di sistem, kelas baru akan otomatis dibuat.',
+          icon: 'info',
+          showDenyButton: true,
+          showCancelButton: true,
+          confirmButtonText: 'Upload Data Excel',
+          denyButtonText: 'Unduh Template',
+          cancelButtonText: 'Batal',
+          confirmButtonColor: '#137fec',
+          denyButtonColor: '#28a745'
+      }).then((result: any) => {
+          if (result.isConfirmed) {
+              // Trigger File Input
+              if (fileInputRef.current) {
+                  fileInputRef.current.value = ''; // Reset input
+                  fileInputRef.current.click();
+              }
+          } else if (result.isDenied) {
+              handleDownloadTemplate();
+          }
+      });
+  };
+
+  const handleDownloadTemplate = async () => {
+      const workbook = new ExcelJS.Workbook();
+      const sheet = workbook.addWorksheet('Template Siswa');
+
+      // Define Headers
+      sheet.columns = [
+          { header: 'No', key: 'no', width: 5 },
+          { header: 'Nama Lengkap', key: 'name', width: 30 },
+          { header: 'NIS', key: 'nis', width: 15 },
+          { header: 'Kelas', key: 'className', width: 15 },
+          { header: 'L/P', key: 'gender', width: 10 },
+      ];
+
+      // Style Header
+      const headerRow = sheet.getRow(1);
+      headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF137FEC' } };
+
+      // Add Dummy Data (Row 2) to guide user
+      sheet.addRow([1, 'Contoh: Ahmad Dahlan', '12345', '10-A', 'L']);
+
+      // Download
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = window.URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = 'Template_Import_Siswa_SiGuru.xlsx';
+      anchor.click();
+      window.URL.revokeObjectURL(url);
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      const workbook = new ExcelJS.Workbook();
+      const reader = new FileReader();
+
+      reader.onload = async (evt) => {
+          const buffer = evt.target?.result as ArrayBuffer;
+          if (!buffer) return;
+
+          try {
+              await workbook.xlsx.load(buffer);
+              const worksheet = workbook.getWorksheet(1); // Get first sheet
+              
+              if (!worksheet) {
+                  Swal.fire('Error', 'File Excel tidak valid atau kosong.', 'error');
+                  return;
+              }
+
+              const newStudents: Student[] = [];
+              const importedClassNames = new Set<string>();
+              let successCount = 0;
+              let failCount = 0;
+
+              // Iterate starting from Row 2 (skip header)
+              worksheet.eachRow((row, rowNumber) => {
+                  if (rowNumber === 1) return; // Skip Header
+
+                  // Extract Data
+                  const name = row.getCell(2).text?.trim(); // Col B
+                  const nis = row.getCell(3).text?.trim();  // Col C
+                  let className = row.getCell(4).text?.trim(); // Col D
+                  
+                  // Validasi Kelengkapan (Kolom 2, 3, 4 Wajib)
+                  if (name && nis && className) {
+                      // Normalize Class Name
+                      // className = className.toUpperCase(); // Optional: force uppercase? Better keep as is but safe check.
+
+                      const student: Student = {
+                          id: `imp-${Date.now()}-${rowNumber}`,
+                          name: toTitleCase(name),
+                          nis: nis,
+                          className: className,
+                      };
+                      newStudents.push(student);
+                      importedClassNames.add(className);
+                      successCount++;
+                  } else {
+                      // Jika baris tidak kosong sepenuhnya tapi data tidak lengkap
+                      if (name || nis || className) {
+                        failCount++;
+                      }
+                  }
+              });
+
+              if (newStudents.length > 0) {
+                  // --- AUTOMATIC CLASS CREATION LOGIC ---
+                  const classesToCreate: ClassInfo[] = [];
+                  const existingClassNames = new Set(classes.map(c => c.name.toLowerCase()));
+                  
+                  // Determine default level (heuristic: use existing first class level or default)
+                  const defaultLevel = classes.length > 0 ? classes[0].level : 'Fase E';
+
+                  importedClassNames.forEach(clsName => {
+                      if (!existingClassNames.has(clsName.toLowerCase())) {
+                          const newClass: ClassInfo = {
+                              id: `auto-cls-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                              name: clsName,
+                              level: defaultLevel, // Defaulting to avoid error, user can edit later
+                              studentCount: 0 // Will be calculated by UI
+                          };
+                          classesToCreate.push(newClass);
+                          // Add to temporary set to prevent duplicates within this import session
+                          existingClassNames.add(clsName.toLowerCase());
+                      }
+                  });
+
+                  // 1. Update Classes if needed
+                  if (classesToCreate.length > 0) {
+                      onUpdateClasses([...classes, ...classesToCreate]);
+                  }
+
+                  // 2. Update Students
+                  onUpdateStudents([...newStudents, ...students]); 
+                  
+                  // 3. Feedback
+                  let message = `<p>Berhasil menyimpan <b>${successCount}</b> data siswa.</p>`;
+                  
+                  if (classesToCreate.length > 0) {
+                      message += `<p class="text-blue-600 mt-2 text-sm bg-blue-50 p-2 rounded">
+                        <span class="font-bold">Info:</span> ${classesToCreate.length} Kelas baru otomatis dibuat (${classesToCreate.map(c => c.name).join(', ')}).
+                      </p>`;
+                  }
+
+                  if (failCount > 0) {
+                      message += `<p class="text-red-500 mt-2 text-sm">Gagal: <b>${failCount}</b> baris dilewati (Data tidak lengkap).</p>`;
+                  }
+
+                  Swal.fire({
+                      title: 'Import Selesai',
+                      html: message,
+                      icon: failCount > 0 ? 'warning' : 'success'
+                  });
+              } else {
+                  Swal.fire('Info', 'Tidak ada data valid yang ditemukan untuk diimport.', 'info');
+              }
+
+          } catch (error) {
+              console.error(error);
+              Swal.fire('Error', 'Gagal membaca file. Pastikan format Excel (.xlsx) benar.', 'error');
+          }
+      };
+
+      reader.readAsArrayBuffer(file);
+  };
+
   return (
     <div className="w-full max-w-7xl mx-auto">
+      {/* Hidden File Input */}
+      <input 
+          type="file" 
+          ref={fileInputRef}
+          onChange={handleFileUpload}
+          accept=".xlsx, .xls"
+          className="hidden"
+      />
+
       {/* Breadcrumbs */}
       <div className="flex items-center gap-2 mb-4">
         <button onClick={onBack} className="text-slate-500 text-sm font-medium hover:text-primary">Beranda</button>
@@ -146,8 +332,11 @@ export const StudentManager: React.FC<Props> = ({ students, classes, onUpdateStu
           <p className="text-slate-500 text-base font-normal">Kelola data induk siswa, mutasi, dan status akademik.</p>
         </div>
         <div className="flex gap-2">
-           <button className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-bold hover:bg-slate-50 transition-colors text-slate-700">
-            <span className="material-symbols-outlined text-sm">upload</span>
+           <button 
+             onClick={handleImportMenuClick}
+             className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-bold hover:bg-slate-50 transition-colors text-slate-700"
+           >
+            <span className="material-symbols-outlined text-sm">upload_file</span>
             Import Excel
           </button>
           <button 

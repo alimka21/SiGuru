@@ -70,7 +70,7 @@ const ScheduleCard: React.FC<ScheduleCardProps> = ({ id, startTime, endTime, cla
     const finishedStatus = isFinished();
 
     return (
-        <div className={`border rounded-xl p-5 flex items-center gap-6 shadow-sm relative overflow-hidden transition-all ${liveStatus ? 'bg-white border-primary border-2 ring-4 ring-primary/5' : 'bg-white border-slate-200'}`}>
+        <div className={`border rounded-xl p-5 flex flex-col md:flex-row md:items-center gap-6 shadow-sm relative overflow-hidden transition-all ${liveStatus ? 'bg-white border-primary border-2 ring-4 ring-primary/5' : 'bg-white border-slate-200'}`}>
             {liveStatus && (
                 <div className="absolute top-0 right-0 animate-pulse">
                     <div className="bg-primary text-white text-[10px] font-bold px-3 py-1 rounded-bl-lg flex items-center gap-1">
@@ -89,16 +89,23 @@ const ScheduleCard: React.FC<ScheduleCardProps> = ({ id, startTime, endTime, cla
                 <p className="text-slate-500 text-sm">{className} • {room}</p>
                 {finishedStatus && <span className="text-xs font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded mt-1 inline-block">Selesai</span>}
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
                 <button 
                   onClick={() => onNavigate(TabView.ATTENDANCE, { className, scheduleId: id })}
-                  className={`px-3 py-1.5 border text-xs font-bold rounded transition-colors ${liveStatus ? 'border-primary text-primary hover:bg-primary/10' : 'border-slate-300 text-slate-500 hover:bg-slate-50'}`}
+                  className={`flex-1 md:flex-none px-3 py-1.5 border text-xs font-bold rounded transition-colors ${liveStatus ? 'border-primary text-primary hover:bg-primary/10' : 'border-slate-300 text-slate-500 hover:bg-slate-50'}`}
                 >
                   Presensi
                 </button>
                 <button 
+                  onClick={() => onNavigate(TabView.JOURNAL, { className, scheduleId: id })}
+                  className={`flex-1 md:flex-none px-3 py-1.5 border text-xs font-bold rounded transition-colors flex items-center justify-center gap-1 ${liveStatus ? 'border-purple-500 text-purple-600 hover:bg-purple-50' : 'border-slate-300 text-slate-500 hover:bg-slate-50'}`}
+                >
+                  <span className="material-symbols-outlined text-sm">edit_square</span>
+                  Jurnal
+                </button>
+                <button 
                   onClick={() => onNavigate(TabView.GRADING, { className })}
-                  className={`px-3 py-1.5 text-xs font-bold rounded transition-colors ${liveStatus ? 'bg-primary text-white hover:bg-blue-600' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                  className={`flex-1 md:flex-none px-3 py-1.5 text-xs font-bold rounded transition-colors ${liveStatus ? 'bg-primary text-white hover:bg-blue-600' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
                 >
                   Input Nilai
                 </button>

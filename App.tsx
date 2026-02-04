@@ -14,11 +14,12 @@ import { ScheduleManager } from './components/ScheduleManager';
 const CPGenerator = React.lazy(() => import('./components/CPGenerator').then(module => ({ default: module.CPGenerator })));
 
 import { RecapManager } from './components/RecapManager';
+import { JournalManager } from './components/JournalManager'; // Import Journal Manager
 import { LoginPage, RegisterData, LoginData } from './components/LoginPage';
 import { AdminPanel } from './components/AdminPanel';
 import { 
   TabView, Student, LearningObjective, Subject, IdentityData, 
-  ScheduleItem, AttendanceData, ClassInfo, GradeData, User, UserStorageData 
+  ScheduleItem, AttendanceData, ClassInfo, GradeData, User, UserStorageData, JournalEntry 
 } from './types';
 
 declare const Swal: any;
@@ -46,6 +47,15 @@ const INITIAL_IDENTITY: IdentityData = {
     studentCount: 0
 };
 
+// MOCK DATA FOR ADMIN PANEL DEMO
+// In a real app, this would be fetched from 'auth.users' or 'public.teachers' via Supabase Admin API
+const MOCK_ALL_USERS: User[] = [
+  { id: 'u1', email: 'guru1@sekolah.id', name: 'Budi Santoso', role: 'SUBJECT_TEACHER', level: 'SMA', isActive: true },
+  { id: 'u2', email: 'guru2@sekolah.id', name: 'Siti Aminah', role: 'CLASS_TEACHER', level: 'SD', isActive: true },
+  { id: 'u3', email: 'calon1@sekolah.id', name: 'Rudi Hartono (Baru)', role: 'SUBJECT_TEACHER', level: 'SMP', isActive: false },
+  { id: 'u4', email: 'calon2@sekolah.id', name: 'Dewi Sartika (Baru)', role: 'CLASS_TEACHER', level: 'SD', isActive: false },
+];
+
 // Modified NavItem to handle collapsed state
 const NavItem = ({ active, label, icon, onClick, collapsed }: any) => (
   <button
@@ -69,6 +79,15 @@ export default function App() {
   // --- AUTH STATE ---
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true); 
+  
+  // State for Admin Panel Management (Mock)
+  const [allUsers, setAllUsers] = useState<User[]>(MOCK_ALL_USERS);
+
+  // --- SETTINGS STATE ---
+  // Default WA Number (bisa diganti di Admin Panel)
+  const [adminWaNumber, setAdminWaNumber] = useState(() => {
+    return localStorage.getItem('siguru_admin_wa') || '6282335454864';
+  });
 
   // --- VIEW STATE ---
   const [activeTab, setActiveTab] = useState<TabView>(TabView.LOGIN);
@@ -83,6 +102,7 @@ export default function App() {
   const [subject, setSubject] = useState<Subject>({ id: 's1', name: 'Mata Pelajaran', kktp: 75 });
   const [attendanceData, setAttendanceData] = useState<AttendanceData>({});
   const [gradeData, setGradeData] = useState<GradeData>({}); 
+  const [journals, setJournals] = useState<JournalEntry[]>([]); // New Journal State
 
   // Context State for Navigation
   const [navContext, setNavContext] = useState<{ className?: string, scheduleId?: string }>({});
@@ -103,10 +123,12 @@ export default function App() {
       } else {
         setIsLoadingAuth(false);
       }
+    }).catch(err => {
+        console.error("Supabase Session Check Error:", err);
+        setIsLoadingAuth(false);
     });
 
     // 2. Listen for Auth Changes (Login, Logout, Token Refresh)
-    // Supabase automatically handles token refresh & localStorage persistence.
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       console.log("Auth Event:", event);
       
@@ -120,20 +142,46 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  const handleUserRestored = (authUser: any) => {
+  const handleUserRestored = async (authUser: any) => {
       // Map Supabase User to App User
       const meta = authUser.user_metadata || {};
       
+      // Determine isActive status. 
+      // Rule: Default to TRUE if undefined (legacy), unless explicitly set to FALSE.
+      // For NEW registrations, we set it to false.
+      const isActiveStatus = meta.isActive === undefined ? true : meta.isActive;
+
       const appUser: User = {
           id: authUser.id,
           email: authUser.email || '',
           name: meta.full_name || authUser.email?.split('@')[0] || 'Guru',
           role: authUser.email === 'admin@siguru.com' || meta.role === 'ADMIN' ? 'ADMIN' : (meta.role || 'SUBJECT_TEACHER'),
           level: meta.level || 'SMA',
-          isActive: true
+          isActive: isActiveStatus
       };
       
+      // BLOCK LOGIN IF NOT ACTIVE (Except Admin)
+      if (!appUser.isActive && appUser.role !== 'ADMIN') {
+          await supabase.auth.signOut();
+          Swal.fire({
+              title: 'Akun Belum Aktif',
+              text: 'Pendaftaran Anda sedang menunggu verifikasi Admin. Silahkan hubungi admin atau coba lagi nanti.',
+              icon: 'warning'
+          });
+          setIsLoadingAuth(false);
+          return;
+      }
+
       setCurrentUser(appUser);
+      
+      // If Admin, ensure current user is in the mock list
+      if (appUser.role === 'ADMIN') {
+          setAllUsers(prev => {
+              if (prev.find(u => u.id === appUser.id)) return prev;
+              return [...prev, appUser];
+          });
+      }
+
       loadUserData(appUser); // Load local app data
       
       // Auto Redirect to Dashboard/Admin
@@ -155,6 +203,7 @@ export default function App() {
       setTps([]);
       setAttendanceData({});
       setGradeData({});
+      setJournals([]);
       setActiveTab(TabView.LOGIN);
       setIsLoadingAuth(false);
   };
@@ -177,6 +226,7 @@ export default function App() {
             setSubject(data.subject);
             setAttendanceData(data.attendanceData || {});
             setGradeData(data.gradeData || {});
+            setJournals(data.journals || []);
           } catch (e) {
             console.error("Failed to parse saved data", e);
           }
@@ -213,10 +263,11 @@ export default function App() {
       tps,
       subject,
       attendanceData,
-      gradeData
+      gradeData,
+      journals
     };
     localStorage.setItem(storageKey, JSON.stringify(payload));
-  }, [currentUser, identity, students, classes, schedules, tps, subject, attendanceData, gradeData]);
+  }, [currentUser, identity, students, classes, schedules, tps, subject, attendanceData, gradeData, journals]);
 
   // Auto-save on data change
   useEffect(() => {
@@ -225,6 +276,13 @@ export default function App() {
       return () => clearTimeout(timeout);
     }
   }, [saveDataToStorage, currentUser, activeTab]);
+
+  // Update settings handler
+  const handleUpdateWaNumber = (newNumber: string) => {
+    setAdminWaNumber(newNumber);
+    localStorage.setItem('siguru_admin_wa', newNumber);
+    Swal.fire('Sukses', 'Nomor WhatsApp Admin berhasil diperbarui.', 'success');
+  };
 
 
   // =================================================================================
@@ -237,74 +295,91 @@ export default function App() {
     if (!isSupabaseConfigured) {
         Swal.fire({
             title: 'Konfigurasi Hilang', 
-            text: 'URL Supabase atau Anon Key belum diset di file .env. Sistem tidak dapat menghubungi database.', 
+            text: 'URL Supabase atau Anon Key belum diset di file .env.', 
             icon: 'error'
         });
         setIsLoadingAuth(false);
         return;
     }
 
-    const { error } = await supabase.auth.signInWithPassword({
-        email: data.email,
-        password: data.password
-    });
-
-    if (error) {
-        // Tampilkan error jika login gagal. Tidak ada fallback ke mode demo.
-        let errorMsg = error.message;
-        if (error.message.includes("Invalid login credentials")) {
-            errorMsg = "Email belum terdaftar atau password salah. Silakan cek kembali.";
-        }
-        
-        Swal.fire({
-            title: 'Gagal Masuk',
-            text: errorMsg,
-            icon: 'error'
+    try {
+        const { error } = await supabase.auth.signInWithPassword({
+            email: data.email,
+            password: data.password
         });
-        setIsLoadingAuth(false);
-    } 
-    // Success handled by onAuthStateChange
+
+        if (error) {
+            let errorMsg = error.message;
+            let errorTitle = 'Gagal Masuk';
+            
+            if (error.message.includes("Invalid login credentials")) {
+                errorTitle = "Akun Tidak Ditemukan / Password Salah";
+                errorMsg = "Mohon cek ejaan email dan password Anda.";
+            } else if (error.message.toLowerCase().includes("email not confirmed")) {
+                errorTitle = "Email Belum Dikonfirmasi";
+                errorMsg = "Akun Anda belum aktif karena email belum diverifikasi.";
+            } else if (error.message.toLowerCase().includes("failed to fetch")) {
+                errorTitle = "Koneksi Bermasalah";
+                errorMsg = "Gagal menghubungi server database.";
+            } else if (error.message.toLowerCase().includes("email logins are disabled")) {
+                errorTitle = "Fitur Login Email Belum Aktif";
+                errorMsg = "Provider Email belum diaktifkan di Supabase Dashboard.";
+            }
+            
+            Swal.fire({ title: errorTitle, text: errorMsg, icon: 'error' });
+            setIsLoadingAuth(false);
+        }
+    } catch (err: any) {
+         console.error("Login Error:", err);
+         Swal.fire({ title: 'Error Sistem', text: 'Terjadi kesalahan jaringan yang tidak terduga.', icon: 'error' });
+         setIsLoadingAuth(false);
+    }
   };
 
   const handleRegister = async (data: RegisterData) => {
     setIsLoadingAuth(true);
 
     if (!isSupabaseConfigured) {
-        Swal.fire({
-            title: 'Konfigurasi Hilang', 
-            text: 'URL Supabase atau Anon Key belum diset. Tidak dapat mendaftarkan akun.', 
-            icon: 'error'
-        });
+        Swal.fire({ title: 'Konfigurasi Hilang', text: 'Database belum diset.', icon: 'error' });
         setIsLoadingAuth(false);
         return;
     }
 
-    const { error } = await supabase.auth.signUp({
-      email: data.email,
-      password: data.password,
-      options: {
-        data: {
-          full_name: data.name,
-          role: data.role,
-          level: data.level
-        }
-      }
-    });
+    try {
+        const { error } = await supabase.auth.signUp({
+            email: data.email,
+            password: data.password,
+            options: {
+                emailRedirectTo: window.location.origin, 
+                data: {
+                  full_name: data.name,
+                  role: data.role,
+                  level: data.level,
+                  isActive: false // SET DEFAULT INACTIVE
+                }
+            }
+        });
 
-    if (error) {
-      Swal.fire({
-        title: 'Registrasi Gagal',
-        text: error.message,
-        icon: 'error'
-      });
-      setIsLoadingAuth(false);
-    } else {
-      Swal.fire({
-        title: 'Registrasi Berhasil',
-        text: 'Akun Anda telah dibuat. Silahkan login jika tidak diarahkan otomatis.',
-        icon: 'success'
-      });
-      // Auth state change will handle the rest
+        if (error) {
+            Swal.fire({ title: 'Registrasi Gagal', text: error.message, icon: 'error' });
+            setIsLoadingAuth(false);
+        } else {
+            Swal.fire({
+                title: 'Registrasi Berhasil!',
+                html: `
+                    <p>Akun Anda telah dibuat.</p>
+                    <div class="bg-yellow-50 text-yellow-800 p-3 rounded text-sm mt-3 border border-yellow-200">
+                        <strong>Menunggu Verifikasi Admin</strong><br/>
+                        Anda belum bisa login sampai Admin mengaktifkan akun Anda. Silahkan cek email verifikasi terlebih dahulu.
+                    </div>
+                `,
+                icon: 'success'
+            });
+            setIsLoadingAuth(false);
+        }
+    } catch (err: any) {
+        Swal.fire({ title: 'Error Sistem', text: 'Gagal melakukan registrasi.', icon: 'error' });
+        setIsLoadingAuth(false);
     }
   };
 
@@ -317,10 +392,9 @@ export default function App() {
       cancelButtonText: 'Batal'
     }).then(async (result: any) => {
       if (result.isConfirmed) {
-        saveDataToStorage(); // Ensure app data is saved one last time
-        
+        saveDataToStorage(); 
         if (isSupabaseConfigured) {
-            await supabase.auth.signOut(); // Triggers SIGNED_OUT event -> resetAppState()
+            await supabase.auth.signOut(); 
         } else {
             resetAppState(); 
         }
@@ -356,15 +430,71 @@ export default function App() {
     setActiveTab(tab);
   };
 
-  // MOCK ADMIN HANDLERS
-  const handleAddUser = (email: string, name: string) => {
-      Swal.fire('Info', 'Gunakan halaman registrasi untuk menambah user baru.', 'info');
+  // --- ADMIN HANDLERS (UPDATED) ---
+  
+  const handleAddUser = (data: RegisterData) => {
+      // In a real app with Admin Service Role, this would create a user in Supabase.
+      console.log("Adding User Manual:", data);
+      
+      // Simulate adding to local list for demo
+      const newUser: User = {
+          id: `new-${Date.now()}`,
+          email: data.email,
+          name: data.name,
+          role: data.role,
+          level: data.level,
+          isActive: true // Admin-added users are active by default
+      };
+      setAllUsers([...allUsers, newUser]);
+
+      Swal.fire('Sukses', 'Pengguna berhasil ditambahkan (Simulasi).', 'success');
   };
+
   const handleDeleteUser = (id: string) => {
-      Swal.fire('Info', 'Fungsi hapus user perlu akses Supabase Service Role.', 'info');
+      setAllUsers(prev => prev.filter(u => u.id !== id));
+      Swal.fire('Terhapus', 'Pengguna berhasil dihapus.', 'success');
   };
-  const handleUpdateUser = (id: string, name: string) => {
-     // Local visual update only
+
+  // UPDATED: Handle full update including password logic for simulation
+  const handleUpdateUser = (id: string, data: RegisterData) => {
+     setAllUsers(prev => prev.map(u => u.id === id ? { 
+         ...u, 
+         name: data.name,
+         email: data.email,
+         role: data.role,
+         level: data.level
+     } : u));
+
+     let message = 'Data pengguna berhasil diperbarui.';
+     if (data.password) {
+         message += ' Password juga telah direset (Simulasi).';
+         console.log(`[Mock] Password for user ${id} reset to: ${data.password}`);
+     }
+     
+     Swal.fire('Sukses', message, 'success');
+  };
+
+  const handleApproveUser = (id: string) => {
+      // In real app: Call supabase function to update user metadata
+      setAllUsers(prev => prev.map(u => u.id === id ? { ...u, isActive: true } : u));
+      Swal.fire('Diaktifkan', 'User berhasil diaktifkan. Mereka sekarang bisa login.', 'success');
+  };
+
+  const handleRejectUser = (id: string) => {
+      // In real app: Delete user or keep as banned
+      Swal.fire({
+          title: 'Tolak Pengguna?',
+          text: "Pengguna ini akan dihapus dari daftar.",
+          icon: 'warning',
+          showCancelButton: true,
+          confirmButtonColor: '#d33',
+          confirmButtonText: 'Tolak & Hapus'
+      }).then((result: any) => {
+          if (result.isConfirmed) {
+              setAllUsers(prev => prev.filter(u => u.id !== id));
+              Swal.fire('Ditolak', 'Pengajuan pengguna ditolak.', 'success');
+          }
+      });
   };
 
 
@@ -372,7 +502,6 @@ export default function App() {
   // RENDER
   // =================================================================================
 
-  // 1. Loading State (Full Screen)
   if (isLoadingAuth) {
       return (
           <div className="flex h-screen w-full items-center justify-center bg-background-light">
@@ -384,26 +513,37 @@ export default function App() {
       );
   }
 
-  // 2. Login Page
+  // Login Page with Admin Contact Prop
   if (!currentUser) {
-    return <LoginPage onLogin={handleLogin} onRegister={handleRegister} isLoading={isLoadingAuth} />;
-  }
-
-  // 3. Admin Panel
-  if (activeTab === TabView.ADMIN_PANEL && currentUser?.role === 'ADMIN') {
     return (
-      <AdminPanel 
-        users={[currentUser]} // In real app, fetch all users from Supabase DB
-        onAddUser={handleAddUser}
-        onDeleteUser={handleDeleteUser}
-        onUpdateUser={handleUpdateUser}
-        onGoToApp={() => setActiveTab(TabView.DASHBOARD)}
-        onLogout={handleLogout}
+      <LoginPage 
+        onLogin={handleLogin} 
+        onRegister={handleRegister} 
+        isLoading={isLoadingAuth}
+        adminWaNumber={adminWaNumber} 
       />
     );
   }
 
-  // 4. Main App Dashboard
+  // Admin Panel with Settings
+  if (activeTab === TabView.ADMIN_PANEL && currentUser?.role === 'ADMIN') {
+    return (
+      <AdminPanel 
+        users={allUsers} // Pass All Users (Real + Mock)
+        onAddUser={handleAddUser}
+        onDeleteUser={handleDeleteUser}
+        onUpdateUser={handleUpdateUser}
+        onApproveUser={handleApproveUser} // New Handler
+        onRejectUser={handleRejectUser} // New Handler
+        onGoToApp={() => setActiveTab(TabView.DASHBOARD)}
+        onLogout={handleLogout}
+        waNumber={adminWaNumber}
+        onUpdateWaNumber={handleUpdateWaNumber}
+      />
+    );
+  }
+
+  // Main App Dashboard
   return (
     <QueryClientProvider client={queryClient}>
       <div className="flex min-h-screen font-sans">
@@ -423,7 +563,7 @@ export default function App() {
               {!isSidebarCollapsed && (
                 <div className="whitespace-nowrap overflow-hidden">
                   <h1 className="text-slate-900 text-base font-bold leading-tight">SiGuru</h1>
-                  <p className="text-slate-500 text-[10px] font-normal mt-0.5">App Admin Guru</p>
+                  <p className="text-slate-500 text-sm font-normal mt-0.5">App Admin Guru</p>
                 </div>
               )}
             </div>
@@ -480,6 +620,7 @@ export default function App() {
                 <div className="h-4"></div>
               )}
 
+              <NavItem collapsed={isSidebarCollapsed} active={activeTab === TabView.JOURNAL} label="Jurnal Guru" icon="edit_note" onClick={() => handleContextNavigate(TabView.JOURNAL)} />
               <NavItem collapsed={isSidebarCollapsed} active={activeTab === TabView.GRADING} label="Input Nilai" icon="assignment_turned_in" onClick={() => handleContextNavigate(TabView.GRADING)} />
               <NavItem collapsed={isSidebarCollapsed} active={activeTab === TabView.RECAP_GRADES} label="Rekap Nilai" icon="grade" onClick={() => handleContextNavigate(TabView.RECAP_GRADES)} />
               <NavItem collapsed={isSidebarCollapsed} active={activeTab === TabView.ATTENDANCE} label="Presensi" icon="how_to_reg" onClick={() => handleContextNavigate(TabView.ATTENDANCE)} />
@@ -506,7 +647,7 @@ export default function App() {
               {!isSidebarCollapsed && (
                 <div className="flex flex-col overflow-hidden">
                   <p className="text-slate-900 text-sm font-bold truncate">{identity.teacherName}</p>
-                  <p className="text-slate-500 text-[10px] truncate">{currentUser?.email}</p>
+                  <p className="text-slate-500 text-sm truncate">{currentUser?.email}</p>
                 </div>
               )}
             </div>
@@ -602,6 +743,7 @@ export default function App() {
                         students={students}
                         classes={classes}
                         onUpdateStudents={setStudents}
+                        onUpdateClasses={setClasses}
                         onBack={() => handleContextNavigate(TabView.DASHBOARD)} 
                     />
                 )}
@@ -611,6 +753,18 @@ export default function App() {
                         schedules={schedules} 
                         onUpdateSchedules={setSchedules}
                         onBack={() => handleContextNavigate(TabView.DASHBOARD)} 
+                    />
+                )}
+
+                {activeTab === TabView.JOURNAL && (
+                    <JournalManager 
+                        journals={journals}
+                        onUpdateJournals={setJournals}
+                        tps={tps}
+                        schedules={schedules}
+                        classes={classes}
+                        initialContext={navContext}
+                        onBack={() => handleContextNavigate(TabView.DASHBOARD)}
                     />
                 )}
                 

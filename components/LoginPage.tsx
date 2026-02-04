@@ -1,6 +1,6 @@
-
 import React, { useState } from 'react';
 import { TeacherRole, SchoolLevel } from '../types';
+import { getSupabaseProjectId } from '../utils/supabase';
 
 declare const Swal: any;
 
@@ -24,6 +24,7 @@ interface Props {
   onDemoLogin?: () => void;
   isLoading?: boolean;
   isConfigured?: boolean;
+  adminWaNumber: string; // New Prop for Dynamic WA
 }
 
 type AuthMode = 'LOGIN' | 'REGISTER';
@@ -33,7 +34,7 @@ const toTitleCase = (str: string) => {
     return str.toLowerCase().replace(/\b\w/g, s => s.toUpperCase());
 };
 
-export const LoginPage: React.FC<Props> = ({ onLogin, onRegister, onDemoLogin, isLoading, isConfigured = true }) => {
+export const LoginPage: React.FC<Props> = ({ onLogin, onRegister, onDemoLogin, isLoading, isConfigured = true, adminWaNumber }) => {
   const [mode, setMode] = useState<AuthMode>('LOGIN');
   const [showPassword, setShowPassword] = useState(false);
 
@@ -52,7 +53,11 @@ export const LoginPage: React.FC<Props> = ({ onLogin, onRegister, onDemoLogin, i
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (loginForm.email && loginForm.password) {
-      await onLogin(loginForm);
+      // Trim email to avoid whitespace issues
+      await onLogin({
+          email: loginForm.email.trim(),
+          password: loginForm.password
+      });
     }
   };
 
@@ -64,9 +69,47 @@ export const LoginPage: React.FC<Props> = ({ onLogin, onRegister, onDemoLogin, i
           Swal.fire('Error', 'Password minimal 6 karakter.', 'error');
           return;
       }
-      await onRegister(registerForm);
+      await onRegister({
+          ...registerForm,
+          email: registerForm.email.trim()
+      });
     }
   };
+
+  const handleForgotPassword = () => {
+    Swal.fire({
+      title: 'Lupa Kata Sandi?',
+      html: `
+        <p class="text-sm text-slate-500 mb-4">Silahkan isi data berikut untuk menghubungi Admin via WhatsApp.</p>
+        <input id="swal-input1" class="swal2-input" placeholder="Nama Lengkap Anda">
+        <input id="swal-input2" class="swal2-input" placeholder="Email Terdaftar">
+      `,
+      focusConfirm: false,
+      confirmButtonText: 'Kirim ke WhatsApp',
+      showCancelButton: true,
+      cancelButtonText: 'Batal',
+      preConfirm: () => {
+        return [
+          (document.getElementById('swal-input1') as HTMLInputElement).value,
+          (document.getElementById('swal-input2') as HTMLInputElement).value
+        ]
+      }
+    }).then((result: any) => {
+      if (result.isConfirmed) {
+        const [name, email] = result.value;
+        if (!name || !email) {
+            Swal.fire('Error', 'Nama dan Email harus diisi!', 'error');
+            return;
+        }
+
+        const message = `Halo Admin, saya *${name}* (%0AEmail: ${email})%0A%0ASaya lupa password akun SiGuru saya. Mohon bantuannya untuk reset password. Terima kasih.`;
+        const waLink = `https://wa.me/${adminWaNumber}?text=${message}`;
+        window.open(waLink, '_blank');
+      }
+    });
+  };
+
+  const projectId = getSupabaseProjectId();
 
   return (
     <div className="min-h-screen bg-background-light flex flex-col justify-center items-center p-4 relative overflow-hidden font-sans">
@@ -122,6 +165,8 @@ export const LoginPage: React.FC<Props> = ({ onLogin, onRegister, onDemoLogin, i
                     <input
                         type="email"
                         required
+                        autoCapitalize="none"
+                        autoComplete="email"
                         className="w-full px-4 py-3 border border-slate-200 rounded-lg text-sm font-bold text-slate-900 focus:ring-2 focus:ring-primary focus:border-transparent bg-slate-50 focus:bg-white"
                         placeholder="contoh@sekolah.id"
                         value={loginForm.email}
@@ -157,6 +202,16 @@ export const LoginPage: React.FC<Props> = ({ onLogin, onRegister, onDemoLogin, i
                 >
                     {isLoading ? 'Memproses...' : 'Masuk ke Aplikasi'}
                 </button>
+                
+                <div className="text-center mt-2">
+                    <button 
+                      type="button" 
+                      onClick={handleForgotPassword}
+                      className="text-xs text-primary font-bold hover:underline"
+                    >
+                        Lupa Sandi?
+                    </button>
+                </div>
               </form>
           ) : (
               <form onSubmit={handleRegisterSubmit} className="space-y-4">
@@ -176,6 +231,8 @@ export const LoginPage: React.FC<Props> = ({ onLogin, onRegister, onDemoLogin, i
                     <input
                         type="email"
                         required
+                        autoCapitalize="none"
+                        autoComplete="email"
                         className="w-full px-4 py-3 border border-slate-200 rounded-lg text-sm font-bold text-slate-900 focus:ring-2 focus:ring-primary focus:border-transparent bg-slate-50 focus:bg-white"
                         placeholder="email@sekolah.id"
                         value={registerForm.email}
@@ -244,7 +301,7 @@ export const LoginPage: React.FC<Props> = ({ onLogin, onRegister, onDemoLogin, i
           <div className="mt-8 pt-6 border-t border-slate-100 text-center">
              {mode === 'LOGIN' ? (
                  <p className="text-xs text-slate-400">
-                    Lupa password? Hubungi Admin Sekolah.
+                    Belum punya akun? Klik tab <strong>Daftar</strong> di atas.
                  </p>
              ) : (
                  <p className="text-xs text-slate-400">
@@ -254,5 +311,12 @@ export const LoginPage: React.FC<Props> = ({ onLogin, onRegister, onDemoLogin, i
           </div>
        </div>
        
-       <footer className="mt-8 text-center">
-         <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">SiGuru &copy;
+       <footer className="mt-8 text-center flex flex-col items-center gap-1">
+         <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">SiGuru &copy; 2026</p>
+         <p className="text-[10px] text-slate-300 font-mono">
+            Server: {projectId}
+         </p>
+       </footer>
+    </div>
+  );
+};

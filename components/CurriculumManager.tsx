@@ -1,5 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
+import ExcelJS from 'exceljs';
 import { LearningMaterial, LearningObjective, Subject, AssessmentCriteria, IdentityData } from '../types';
 
 declare const Swal: any;
@@ -40,26 +41,17 @@ export const CurriculumManager: React.FC<Props> = ({
   const [expandedTpId, setExpandedTpId] = useState<string | null>(null);
   
   // DETERMINE CONTEXT (Scope)
-  // Logic updated to use strict Identity Level instead of parsing School Name
   const scopes = useMemo(() => {
-      if (identity.level === 'SD') {
-          return SD_SUBJECTS;
-      } else if (identity.level === 'SMP') {
-          return SMP_LEVELS;
-      } else {
-          // SMA or SMK
-          return SMA_LEVELS;
-      }
+      if (identity.level === 'SD') return SD_SUBJECTS;
+      else if (identity.level === 'SMP') return SMP_LEVELS;
+      else return SMA_LEVELS;
   }, [identity.level]);
 
   const [activeScopeId, setActiveScopeId] = useState<string>(scopes[0].id);
 
   useEffect(() => {
-      // Ensure activeScopeId is valid when scopes change
       const exists = scopes.find(s => s.id === activeScopeId);
-      if (!exists) {
-          setActiveScopeId(scopes[0].id);
-      }
+      if (!exists) setActiveScopeId(scopes[0].id);
   }, [scopes, activeScopeId]);
 
   // Filter TPs based on Active Scope
@@ -79,6 +71,91 @@ export const CurriculumManager: React.FC<Props> = ({
       val2: string // Title/Description
   }>({ type: null, parentId: null, val1: '', val2: '' });
 
+  // --- EXPORT FUNCTION ---
+  const handleExportCurriculum = async () => {
+    if (filteredTPs.length === 0) return;
+
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('Kurikulum');
+    
+    // Headers
+    const headerRow = sheet.addRow([
+        'No', 
+        'Semester', 
+        'Mata Pelajaran', 
+        'Lingkup Materi (Scope/Fase)', 
+        'Kelas', 
+        'Tujuan Pembelajaran (TP)', 
+        'Lingkup Materi (LM) Detail'
+    ]);
+
+    // Style Headers
+    headerRow.eachCell((cell) => {
+        cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF137FEC' } };
+        cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+        cell.border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} };
+    });
+
+    const activeScopeName = scopes.find(s => s.id === activeScopeId)?.name || activeScopeId;
+    const mapelName = identity.level === 'SD' ? activeScopeName : identity.subjectName; // Logic: di SD scope adalah Mapel, di SMA scope adalah Fase/Kelas
+
+    let rowIndex = 1;
+
+    filteredTPs.forEach((tp) => {
+        // Jika ada LM, buat baris untuk setiap LM. Jika tidak, buat 1 baris untuk TP saja.
+        if (tp.lms.length > 0) {
+            tp.lms.forEach(lm => {
+                const row = sheet.addRow([
+                    rowIndex,
+                    `Semester ${tp.semester}`,
+                    mapelName,
+                    activeScopeName, // Scope/Phase context
+                    identity.level,
+                    `${tp.code} - ${tp.description}`,
+                    `${lm.code} - ${lm.title}`
+                ]);
+                // Styling per cell
+                row.eachCell((cell) => {
+                    cell.border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} };
+                    cell.alignment = { vertical: 'top', wrapText: true };
+                });
+            });
+        } else {
+             const row = sheet.addRow([
+                    rowIndex,
+                    `Semester ${tp.semester}`,
+                    mapelName,
+                    activeScopeName,
+                    identity.level,
+                    `${tp.code} - ${tp.description}`,
+                    '-'
+            ]);
+            row.eachCell((cell) => {
+                cell.border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} };
+                cell.alignment = { vertical: 'top', wrapText: true };
+            });
+        }
+        rowIndex++;
+    });
+
+    // Column Widths
+    sheet.getColumn(6).width = 50; // TP Description
+    sheet.getColumn(7).width = 40; // LM Detail
+    sheet.getColumn(3).width = 20; // Mapel
+    sheet.getColumn(4).width = 25; // Scope
+
+    // Download
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = window.URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `Kurikulum_${activeScopeName.replace(/\s/g, '_')}.xlsx`;
+    anchor.click();
+    window.URL.revokeObjectURL(url);
+  };
+
   // --- TP CRUD ---
   const handleAddTP = () => {
     if(!newTpForm.code || !newTpForm.description) return;
@@ -87,7 +164,7 @@ export const CurriculumManager: React.FC<Props> = ({
         code: newTpForm.code.toUpperCase(), 
         description: newTpForm.description,
         semester: Number(newTpForm.semester) as 1 | 2,
-        scopeId: activeScopeId, // ASSIGN CURRENT SCOPE
+        scopeId: activeScopeId, 
         lms: [],
         criteria: []
     };
@@ -109,11 +186,7 @@ export const CurriculumManager: React.FC<Props> = ({
       }).then((result: any) => {
           if (result.isConfirmed) {
               onUpdateTPs(tps.filter(t => t.id !== id));
-              Swal.fire(
-                  'Terhapus!',
-                  'TP berhasil dihapus.',
-                  'success'
-              )
+              Swal.fire('Terhapus!', 'TP berhasil dihapus.', 'success')
           }
       });
   };
@@ -236,13 +309,23 @@ export const CurriculumManager: React.FC<Props> = ({
                 </div>
             </div>
 
-            <button 
-                onClick={() => setIsAddingTp(!isAddingTp)}
-                className="flex items-center gap-2 px-4 py-2.5 bg-primary text-white rounded-lg text-sm font-bold hover:bg-blue-600 transition-colors shadow-sm"
-            >
-                <span className="material-symbols-outlined text-sm">{isAddingTp ? 'remove' : 'add'}</span>
-                Tambah TP
-            </button>
+            <div className="flex gap-3">
+                 <button 
+                    onClick={handleExportCurriculum}
+                    disabled={filteredTPs.length === 0}
+                    className="flex items-center gap-2 px-4 py-2.5 bg-green-600 text-white rounded-lg text-sm font-bold hover:bg-green-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                    <span className="material-symbols-outlined text-sm">table_view</span>
+                    Export Excel
+                </button>
+                <button 
+                    onClick={() => setIsAddingTp(!isAddingTp)}
+                    className="flex items-center gap-2 px-4 py-2.5 bg-primary text-white rounded-lg text-sm font-bold hover:bg-blue-600 transition-colors shadow-sm"
+                >
+                    <span className="material-symbols-outlined text-sm">{isAddingTp ? 'remove' : 'add'}</span>
+                    Tambah TP
+                </button>
+            </div>
         </div>
 
         {/* Main Content Area */}
