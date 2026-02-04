@@ -1,6 +1,6 @@
+
 import React, { useState } from 'react';
 import { TeacherRole, SchoolLevel } from '../types';
-import { getSupabaseProjectId } from '../utils/supabase';
 
 declare const Swal: any;
 
@@ -108,8 +108,6 @@ export const LoginPage: React.FC<Props> = ({ onLogin, onRegister, onDemoLogin, i
       }
     });
   };
-
-  const projectId = getSupabaseProjectId();
 
   return (
     <div className="min-h-screen bg-background-light flex flex-col justify-center items-center p-4 relative overflow-hidden font-sans">
@@ -313,9 +311,6 @@ export const LoginPage: React.FC<Props> = ({ onLogin, onRegister, onDemoLogin, i
        
        <footer className="mt-8 text-center flex flex-col items-center gap-1">
          <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">SiGuru &copy; 2026</p>
-         <p className="text-[10px] text-slate-300 font-mono">
-            Server: {projectId}
-         </p>
        </footer>
     </div>
   );

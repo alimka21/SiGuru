@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
-import { TabView, IdentityData, ScheduleItem, ClassInfo, Student, AttendanceData, GradeData, Subject, LearningObjective } from '../types';
+import { TabView, IdentityData, ScheduleItem, ClassInfo, Student, AttendanceData, GradeData, Subject, LearningObjective, AttendanceRecord } from '../types';
 import { calculateStudentGrade } from '../utils/grading';
 
 interface Props {
@@ -181,7 +180,7 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, identity, schedules, cl
       todaysSchedules.forEach(schedule => {
           const records = attendanceData[schedule.id]?.[todayIsoDate];
           if (records) {
-              Object.values(records).forEach(record => {
+              Object.values(records).forEach((record: AttendanceRecord) => {
                   if (record.status === 'H') present++;
                   else if (record.status === 'I') izin++;
                   else if (record.status === 'S') sakit++;

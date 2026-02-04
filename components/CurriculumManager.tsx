@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import ExcelJS from 'exceljs';
-import { LearningMaterial, LearningObjective, Subject, AssessmentCriteria, IdentityData } from '../types';
+import { LearningMaterial, LearningObjective, Subject, AssessmentCriteria, IdentityData, AssessmentType } from '../types';
 
 declare const Swal: any;
 
@@ -70,6 +70,9 @@ export const CurriculumManager: React.FC<Props> = ({
       val1: string, // Code
       val2: string // Title/Description
   }>({ type: null, parentId: null, val1: '', val2: '' });
+
+  // Add state for Item Type (Formative/Summative)
+  const [newItemType, setNewItemType] = useState<AssessmentType>('FORMATIVE');
 
   // --- EXPORT FUNCTION ---
   const handleExportCurriculum = async () => {
@@ -213,7 +216,7 @@ export const CurriculumManager: React.FC<Props> = ({
                           id: Date.now().toString(), 
                           code: newItemForm.val1.toUpperCase(), 
                           description: newItemForm.val2,
-                          type: 'SUMMATIVE' // Added type property
+                          type: newItemType // Use the selected state
                       }]
                   };
               }
@@ -223,6 +226,7 @@ export const CurriculumManager: React.FC<Props> = ({
 
       onUpdateTPs(updatedTPs);
       setNewItemForm({ type: null, parentId: null, val1: '', val2: '' });
+      setNewItemType('FORMATIVE'); // Reset default
   };
 
   const handleDeleteSubItem = (tpId: string, itemId: string, type: 'LM' | 'CRITERIA') => {
@@ -492,6 +496,7 @@ export const CurriculumManager: React.FC<Props> = ({
                                                     <tr>
                                                         <th className="px-4 py-2 text-left w-24">Kode</th>
                                                         <th className="px-4 py-2 text-left">Deskripsi Kriteria</th>
+                                                        <th className="px-4 py-2 w-32 text-center">Jenis</th>
                                                         <th className="px-4 py-2 w-16"></th>
                                                     </tr>
                                                 </thead>
@@ -500,6 +505,11 @@ export const CurriculumManager: React.FC<Props> = ({
                                                         <tr key={cr.id} className="group hover:bg-slate-50">
                                                             <td className="px-4 py-2 font-mono text-xs font-bold text-green-600">{cr.code.toUpperCase()}</td>
                                                             <td className="px-4 py-2 text-slate-800">{cr.description}</td>
+                                                            <td className="px-4 py-2 text-center">
+                                                                <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase ${cr.type === 'SUMMATIVE' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
+                                                                    {cr.type === 'SUMMATIVE' ? 'Sumatif' : 'Formatif'}
+                                                                </span>
+                                                            </td>
                                                             <td className="px-4 py-2 text-right">
                                                                 <button 
                                                                     onClick={() => handleDeleteSubItem(tp.id, cr.id, 'CRITERIA')}
@@ -529,6 +539,17 @@ export const CurriculumManager: React.FC<Props> = ({
                                                                 onChange={(e) => setNewItemForm({ type: 'CRITERIA', parentId: tp.id, val1: newItemForm.val1, val2: e.target.value })}
                                                                 onKeyDown={(e) => e.key === 'Enter' && handleAddItem()}
                                                             />
+                                                        </td>
+                                                        <td className="px-2 py-2">
+                                                            <select 
+                                                                value={newItemType}
+                                                                onChange={(e) => setNewItemType(e.target.value as AssessmentType)}
+                                                                className="w-full text-xs border-slate-200 rounded p-1.5 focus:ring-1 focus:ring-green-500 bg-white text-slate-900"
+                                                                onFocus={() => setNewItemForm(prev => ({ ...prev, type: 'CRITERIA', parentId: tp.id }))}
+                                                            >
+                                                                <option value="FORMATIVE">Formatif</option>
+                                                                <option value="SUMMATIVE">Sumatif</option>
+                                                            </select>
                                                         </td>
                                                         <td className="px-2 py-2 text-center">
                                                                 {newItemForm.type === 'CRITERIA' && newItemForm.parentId === tp.id && newItemForm.val1 && (

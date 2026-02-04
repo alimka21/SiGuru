@@ -1,7 +1,8 @@
 
 import React, { useState, useMemo } from 'react';
 import ExcelJS from 'exceljs';
-import { Student, Subject, IdentityData, AttendanceData } from '../types';
+import { Student, Subject, IdentityData, AttendanceData, GradeData, LearningObjective } from '../types';
+import { calculateStudentGrade } from '../utils/grading';
 
 interface Props {
   students: Student[];
@@ -9,6 +10,9 @@ interface Props {
   identity: IdentityData;
   mode: 'GRADES' | 'ATTENDANCE'; 
   globalAttendance: AttendanceData;
+  // Added props for Real Grading
+  gradeData: GradeData;
+  tps: LearningObjective[];
 }
 
 const AVAILABLE_SUBJECTS = [
@@ -22,7 +26,7 @@ const MONTH_NAMES = [
     'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
 ];
 
-export const RecapManager: React.FC<Props> = ({ students, subject, identity, mode, globalAttendance }) => {
+export const RecapManager: React.FC<Props> = ({ students, subject, identity, mode, globalAttendance, gradeData, tps }) => {
   const [selectedClass, setSelectedClass] = useState<string>('');
   const [selectedSubject, setSelectedSubject] = useState<string>(subject.id);
   
@@ -44,7 +48,7 @@ export const RecapManager: React.FC<Props> = ({ students, subject, identity, mod
   // AGGREGATE REAL DATA
   const reportData = useMemo(() => {
     return filteredStudents.map(student => {
-        // Init Counters
+        // --- ATTENDANCE CALCULATION ---
         let totalStats = { present: 0, permit: 0, sick: 0, absent: 0, meetings: 0 };
         let monthlyStats = { present: 0, permit: 0, sick: 0, absent: 0, meetings: 0 };
 
@@ -84,23 +88,29 @@ export const RecapManager: React.FC<Props> = ({ students, subject, identity, mod
             ? Math.round((monthlyStats.present / monthlyStats.meetings) * 100)
             : 0;
 
-        // --- MOCK GRADES (Existing Logic) ---
-        const formative = Math.floor(Math.random() * (95 - 75) + 75);
-        const summative = Math.floor(Math.random() * (90 - 70) + 70);
-        const attitude = Math.floor(Math.random() * (100 - 80) + 80);
-        const finalScore = Math.round((formative * 0.4) + (summative * 0.5) + (attitude * 0.1));
-        const isPassed = finalScore >= subject.kktp;
+        // --- REAL GRADES CALCULATION ---
+        // Menggunakan fungsi utilitas yang sama dengan Dashboard dan GradingSheet
+        const gradeResult = calculateStudentGrade(student.id, gradeData, tps, subject.kktp);
+        
+        // Ambil nilai sikap dari data raw
+        const attitudeScore = gradeData[student.id]?.attitude || 0;
 
         return {
             ...student,
-            grades: { formative, summative, attitude, finalScore, isPassed },
+            grades: { 
+                formative: gradeResult.avgFormative, 
+                summative: gradeResult.avgSummative, 
+                attitude: attitudeScore, 
+                finalScore: gradeResult.finalScore, 
+                isPassed: gradeResult.isPassed 
+            },
             attendance: { 
                 total: { ...totalStats, percentage: totalPercentage },
                 monthly: { ...monthlyStats, percentage: monthlyPercentage }
             }
         };
     });
-  }, [filteredStudents, subject.kktp, globalAttendance, selectedMonth]);
+  }, [filteredStudents, subject.kktp, globalAttendance, selectedMonth, gradeData, tps]);
 
   // --- EXCEL EXPORT LOGIC ---
   const handleExportExcel = async () => {
@@ -239,7 +249,7 @@ export const RecapManager: React.FC<Props> = ({ students, subject, identity, mod
               {mode === 'GRADES' ? 'Rekap Nilai Siswa' : 'Rekap Kehadiran Siswa'}
           </h2>
           <p className="text-slate-500">
-              {mode === 'GRADES' ? 'Laporan nilai akhir semester.' : 'Pantau progres kehadiran bulanan dan akumulasi total.'}
+              {mode === 'GRADES' ? 'Laporan nilai akhir semester (Real-time).' : 'Pantau progres kehadiran bulanan dan akumulasi total.'}
           </p>
         </div>
         <div className="flex gap-2">

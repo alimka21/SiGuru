@@ -799,6 +799,8 @@ export default function App() {
                     identity={identity}
                     mode={activeTab === TabView.RECAP_GRADES ? 'GRADES' : 'ATTENDANCE'}
                     globalAttendance={attendanceData}
+                    gradeData={gradeData} // Pass real grade data
+                    tps={tps}             // Pass TPs for calculation
                     />
                 )}
             </div>
