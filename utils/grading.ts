@@ -1,55 +1,63 @@
 
-import { GradeData, CalculatedGrade } from '../types';
-
-interface GradeWeights {
-    formative: number; // Percentage (0-100)
-    attitude: number; // Percentage (0-100)
-    // Summative is implied as remainder or handled if we split TP vs Sumatif explicitly later. 
-    // For this strict logic: Final = (Avg TP * Formative%) + (Attitude * Attitude%) + (Assumption: Remainder is not used or Logic is simplified as per user request previously).
-    
-    // User logic from prompt 1: (AVG(nilai_formatif) × 0.4) + (AVG(nilai_sumatif) × 0.5) + (nilai_sikap × 0.1)
-    // Current Structure handles Criteria (Formatif) and Attitude. 
-    // To fully support the formula, we assume `scores` are Formative.
-    // Since we don't have a dedicated "Summative" column in the current Matrix UI (only Criteria columns), 
-    // we will adjust the formula to be: (Avg Criteria * X%) + (Attitude * Y%) 
-    // OR we treat the inputs as generic scores.
-    
-    // Let's make it flexible based on parameters passed.
-}
+import { GradeData, CalculatedGrade, LearningObjective } from '../types';
 
 /**
- * FUNGSI PERHITUNGAN NILAI
+ * FUNGSI PERHITUNGAN NILAI OTOMATIS
+ * Rumus: (AVG(Formatif) * 40%) + (AVG(Sumatif) * 50%) + (Sikap * 10%)
  */
 export const calculateStudentGrade = (
   studentId: string,
   gradeData: GradeData,
-  kktp: number,
-  weights: { criteria: number, attitude: number } = { criteria: 90, attitude: 10 }
+  tps: LearningObjective[], // Need TPs to know which criteria is Formative/Summative
+  kktp: number
 ): CalculatedGrade => {
   const studentGrades = gradeData[studentId];
   
   if (!studentGrades) {
-    return { avgScore: 0, finalScore: 0, isPassed: false };
+    return { avgFormative: 0, avgSummative: 0, finalScore: 0, isPassed: false };
   }
 
-  // 1. Calculate Average of all Criteria Scores
-  const scores = Object.values(studentGrades.scores).filter(v => v !== undefined && v !== null && !isNaN(v));
-  const avgScore = scores.length > 0
-    ? scores.reduce((a, b) => a + b, 0) / scores.length
-    : 0;
+  let formativeSum = 0;
+  let formativeCount = 0;
+  let summativeSum = 0;
+  let summativeCount = 0;
 
-  // 2. Get Attitude Score (Default to 0 if missing)
+  // Iterate over all TPs and their Criteria to identify type and get score
+  tps.forEach(tp => {
+      tp.criteria.forEach(criteria => {
+          const score = studentGrades.scores[criteria.id];
+          if (score !== undefined && score !== null && !isNaN(score)) {
+              if (criteria.type === 'SUMMATIVE') {
+                  summativeSum += score;
+                  summativeCount++;
+              } else {
+                  // Default to Formative
+                  formativeSum += score;
+                  formativeCount++;
+              }
+          }
+      });
+  });
+
+  // Calculate Averages
+  const avgFormative = formativeCount > 0 ? formativeSum / formativeCount : 0;
+  const avgSummative = summativeCount > 0 ? summativeSum / summativeCount : 0;
   const attitude = studentGrades.attitude || 0;
 
-  // 3. Apply Formula based on weights (converted to decimals)
-  const criteriaWeight = weights.criteria / 100;
-  const attitudeWeight = weights.attitude / 100;
+  // Apply Formula: (Formatif * 0.4) + (Sumatif * 0.5) + (Sikap * 0.1)
+  // Jika Summative kosong, beban bisa dialihkan ke Formative atau tetap 0 (tergantung kebijakan).
+  // Di sini kita ikuti rumus ketat.
   
-  const finalScoreRaw = (avgScore * criteriaWeight) + (attitude * attitudeWeight);
+  const finalScoreRaw = (avgFormative * 0.4) + (avgSummative * 0.5) + (attitude * 0.1);
+  
+  // Jika belum ada nilai sumatif, rumus mungkin terlihat kecil hasilnya. 
+  // Opsi: Normalisasi jika sumatif 0? Tidak, biarkan raw sesuai progress.
+  
   const finalScore = Math.round(finalScoreRaw * 100) / 100;
 
   return {
-    avgScore,
+    avgFormative: Math.round(avgFormative),
+    avgSummative: Math.round(avgSummative),
     finalScore,
     isPassed: finalScore >= kktp
   };

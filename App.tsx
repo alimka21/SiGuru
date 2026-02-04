@@ -690,6 +690,7 @@ export default function App() {
                     attendanceData={attendanceData}
                     gradeData={gradeData}
                     subject={subject}
+                    tps={tps}
                 />
                 )}
                 

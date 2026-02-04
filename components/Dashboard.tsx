@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { TabView, IdentityData, ScheduleItem, ClassInfo, Student, AttendanceData, GradeData, Subject } from '../types';
+import { TabView, IdentityData, ScheduleItem, ClassInfo, Student, AttendanceData, GradeData, Subject, LearningObjective } from '../types';
 import { calculateStudentGrade } from '../utils/grading';
 
 interface Props {
@@ -12,6 +12,7 @@ interface Props {
   attendanceData: AttendanceData;
   gradeData: GradeData;
   subject: Subject;
+  tps: LearningObjective[];
 }
 
 const StatCard = ({ title, value, subText, subColor, icon, bgIcon }: any) => (
@@ -116,7 +117,7 @@ const ScheduleCard: React.FC<ScheduleCardProps> = ({ id, startTime, endTime, cla
 
 const DAYS_MAP = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
 
-export const Dashboard: React.FC<Props> = ({ onNavigate, identity, schedules, classes, students, attendanceData, gradeData, subject }) => {
+export const Dashboard: React.FC<Props> = ({ onNavigate, identity, schedules, classes, students, attendanceData, gradeData, subject, tps }) => {
   const [currentTime, setCurrentTime] = useState(new Date());
 
   useEffect(() => {
@@ -162,7 +163,7 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, identity, schedules, cl
 
       studentIds.forEach(sid => {
           // Note: Passing default weights as summary (assuming 90/10 as per default in GradingSheet)
-          const result = calculateStudentGrade(sid, gradeData, subject.kktp, { criteria: 90, attitude: 10 });
+          const result = calculateStudentGrade(sid, gradeData, tps, subject.kktp);
           if (result.finalScore > 0) {
               totalScore += result.finalScore;
               count++;
@@ -170,7 +171,7 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, identity, schedules, cl
       });
 
       return count > 0 ? (totalScore / count).toFixed(1) : 0;
-  }, [gradeData, subject.kktp]);
+  }, [gradeData, subject.kktp, tps]);
 
   // 2. Attendance Stats for TODAY
   const attendanceStats = useMemo(() => {

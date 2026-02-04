@@ -106,7 +106,7 @@ export const GradingSheet: React.FC<Props> = ({ students, tps, subject, initialC
 
   // Stats Calculation (based on filtered students)
   const stats = filteredStudents.reduce((acc, student) => {
-      const res = calculateStudentGrade(student.id, globalGradeData, subject.kktp, weights);
+      const res = calculateStudentGrade(student.id, globalGradeData, tps, subject.kktp);
       if (res.finalScore > 0) {
           if (res.isPassed) acc.tuntas++; else acc.remedial++;
       }
@@ -249,7 +249,7 @@ export const GradingSheet: React.FC<Props> = ({ students, tps, subject, initialC
                 <tbody className="divide-y divide-slate-100">
                     {filteredStudents.length > 0 ? (
                         filteredStudents.map((student, index) => {
-                            const result = calculateStudentGrade(student.id, globalGradeData, subject.kktp, weights);
+                            const result = calculateStudentGrade(student.id, globalGradeData, tps, subject.kktp);
                             return (
                                 <tr key={student.id} className="group hover:bg-primary/5 transition-colors">
                                     <td className="sticky-col bg-white group-hover:bg-[#f2f8fe] text-center text-xs text-slate-500 border-r border-slate-100 transition-colors">{index + 1}</td>

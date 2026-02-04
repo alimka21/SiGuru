@@ -1,8 +1,9 @@
 
 // Domain Models
 
-export type TeacherRole = 'CLASS_TEACHER' | 'SUBJECT_TEACHER' | 'ADMIN'; // Added ADMIN explicitly here
+export type TeacherRole = 'CLASS_TEACHER' | 'SUBJECT_TEACHER' | 'ADMIN'; 
 export type SchoolLevel = 'SD' | 'SMP' | 'SMA' | 'SMK'; 
+export type AssessmentType = 'FORMATIVE' | 'SUMMATIVE'; // Added Type
 
 // AUTH TYPES
 export interface User {
@@ -10,12 +11,12 @@ export interface User {
   email: string;
   name: string;
   role: TeacherRole;
-  level?: SchoolLevel; // Added Level specific for User Metadata
+  level?: SchoolLevel; 
   isActive: boolean;
   lastLogin?: string;
 }
 
-// STORAGE WRAPPER (To save all app state per user)
+// STORAGE WRAPPER 
 export interface UserStorageData {
   identity: IdentityData;
   students: Student[];
@@ -25,7 +26,7 @@ export interface UserStorageData {
   subject: Subject;
   attendanceData: AttendanceData;
   gradeData: GradeData;
-  journals: JournalEntry[]; // Added Journals
+  journals: JournalEntry[]; 
 }
 
 export interface Student {
@@ -62,6 +63,7 @@ export interface AssessmentCriteria {
   id: string;
   code: string; 
   description: string; 
+  type: AssessmentType; // Added field for Grading Formula
 }
 
 export interface LearningObjective { 
@@ -84,16 +86,16 @@ export interface Subject {
 export interface JournalEntry {
   id: string;
   date: string;
-  scheduleId?: string; // Link to schedule if available
-  subjectName: string; // Added Subject Name
+  scheduleId?: string; 
+  subjectName: string; 
   className: string;
   startTime: string;
   endTime: string;
-  tpId: string; // Link to LearningObjective
-  lmId?: string; // Link to LearningMaterial (Optional)
-  activity: string; // Kegiatan Pembelajaran
-  reflection: string; // Refleksi Guru
-  followUp: string; // Tindak Lanjut
+  tpId: string; 
+  lmId?: string; 
+  activity: string; 
+  reflection: string; 
+  followUp: string; 
   created_at: string;
 }
 
@@ -105,7 +107,8 @@ export interface GradeData {
 }
 
 export interface CalculatedGrade {
-  avgScore: number;
+  avgFormative: number; // Added breakdown
+  avgSummative: number; // Added breakdown
   finalScore: number;
   isPassed: boolean;
 }
@@ -153,5 +156,5 @@ export enum TabView {
   ATTENDANCE = 'ATTENDANCE',
   RECAP_GRADES = 'RECAP_GRADES',      
   RECAP_ATTENDANCE = 'RECAP_ATTENDANCE',
-  JOURNAL = 'JOURNAL' // Added Journal View
+  JOURNAL = 'JOURNAL' 
 }

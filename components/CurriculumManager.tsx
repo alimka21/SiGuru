@@ -212,7 +212,8 @@ export const CurriculumManager: React.FC<Props> = ({
                       criteria: [...tp.criteria, { 
                           id: Date.now().toString(), 
                           code: newItemForm.val1.toUpperCase(), 
-                          description: newItemForm.val2 
+                          description: newItemForm.val2,
+                          type: 'SUMMATIVE' // Added type property
                       }]
                   };
               }
