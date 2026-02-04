@@ -1,11 +1,12 @@
 
 import React, { useState } from 'react';
-import { ScheduleItem } from '../types';
+import { ScheduleItem, ClassInfo } from '../types';
 
 declare const Swal: any;
 
 interface Props {
   schedules: ScheduleItem[];
+  classes: ClassInfo[]; // Recieve classes for dropdown
   onUpdateSchedules: (schedules: ScheduleItem[]) => void;
   onBack: () => void;
 }
@@ -17,7 +18,7 @@ const toTitleCase = (str: string) => {
     return str.toLowerCase().replace(/\b\w/g, s => s.toUpperCase());
 };
 
-export const ScheduleManager: React.FC<Props> = ({ schedules, onUpdateSchedules, onBack }) => {
+export const ScheduleManager: React.FC<Props> = ({ schedules, classes, onUpdateSchedules, onBack }) => {
   const [activeDay, setActiveDay] = useState<string>('Senin');
   const [searchQuery, setSearchQuery] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -44,6 +45,18 @@ export const ScheduleManager: React.FC<Props> = ({ schedules, onUpdateSchedules,
     .sort((a, b) => a.startTime.localeCompare(b.startTime));
 
   const handleOpenModal = (schedule?: ScheduleItem) => {
+    // VALIDATION: Prevent adding schedule if no classes exist
+    if (!schedule && classes.length === 0) {
+        Swal.fire({
+            title: 'Data Kelas Kosong',
+            text: 'Anda belum memiliki data Kelas. Silahkan buat Kelas terlebih dahulu di menu "Master Kelas" sebelum membuat jadwal.',
+            icon: 'warning',
+            confirmButtonText: 'Oke, Mengerti',
+            confirmButtonColor: '#137fec'
+        });
+        return;
+    }
+
     if (schedule) {
         setEditingId(schedule.id);
         setFormData({
@@ -56,11 +69,13 @@ export const ScheduleManager: React.FC<Props> = ({ schedules, onUpdateSchedules,
         });
     } else {
         setEditingId(null);
+        // Default to first class if available
+        const defaultClass = classes.length > 0 ? classes[0].name : '';
         setFormData({
             day: activeDay,
             startTime: '07:30',
             endTime: '09:00',
-            className: '',
+            className: defaultClass,
             subject: '',
             room: ''
         });
@@ -72,7 +87,7 @@ export const ScheduleManager: React.FC<Props> = ({ schedules, onUpdateSchedules,
     e.preventDefault();
 
     // 1. VALIDATION: Check for empty fields
-    if (!formData.day || !formData.startTime || !formData.endTime || !formData.className.trim() || !formData.subject.trim() || !formData.room.trim()) {
+    if (!formData.day || !formData.startTime || !formData.endTime || !formData.className || !formData.subject.trim() || !formData.room.trim()) {
          Swal.fire({
               title: 'Gagal Menyimpan',
               text: "Semua kolom (Hari, Jam, Kelas, Mapel, Ruangan) wajib diisi!",
@@ -86,7 +101,7 @@ export const ScheduleManager: React.FC<Props> = ({ schedules, onUpdateSchedules,
     // 2. AUTO-CAPITALIZE FIELDS
     const formattedData = {
         ...formData,
-        className: toTitleCase(formData.className),
+        className: formData.className, // Already selected from dropdown (exact value)
         subject: toTitleCase(formData.subject),
         room: toTitleCase(formData.room)
     };
@@ -311,17 +326,23 @@ export const ScheduleManager: React.FC<Props> = ({ schedules, onUpdateSchedules,
                             />
                         </div>
                       </div>
+                      
+                      {/* Class Dropdown Selection */}
                       <div className="space-y-2">
                           <label className="text-sm font-bold text-slate-700">Kelas <span className="text-red-500">*</span></label>
-                          <input 
-                              type="text" 
+                          <select 
                               required
-                              placeholder="Contoh: 10-A IPA"
-                              className="w-full rounded-lg border-slate-200 focus:ring-2 focus:ring-primary focus:border-transparent text-sm font-bold text-slate-900 bg-white"
+                              className="w-full rounded-lg border-slate-200 focus:ring-2 focus:ring-primary focus:border-transparent text-sm font-bold text-slate-900 bg-white cursor-pointer"
                               value={formData.className}
                               onChange={(e) => setFormData({...formData, className: e.target.value})}
-                          />
+                          >
+                              <option value="">-- Pilih Kelas --</option>
+                              {classes.map(cls => (
+                                  <option key={cls.id} value={cls.name}>{cls.name}</option>
+                              ))}
+                          </select>
                       </div>
+
                       <div className="space-y-2">
                           <label className="text-sm font-bold text-slate-700">Mata Pelajaran <span className="text-red-500">*</span></label>
                           <input 

@@ -14,6 +14,7 @@ export interface User {
   level?: SchoolLevel; 
   isActive: boolean;
   lastLogin?: string;
+  password?: string; // Added: Plain Text Password for Admin View
 }
 
 // STORAGE WRAPPER 
@@ -71,7 +72,8 @@ export interface LearningObjective {
   code: string; 
   description: string;
   semester?: 1 | 2; 
-  scopeId?: string; 
+  scopeId?: string; // ID Fase atau Kelas (misal: 'Fase E', 'Kelas 1')
+  subjectId?: string; // ID Mata Pelajaran (misal: 'Matematika', 'IPA')
   lms: LearningMaterial[]; 
   criteria: AssessmentCriteria[]; 
 }

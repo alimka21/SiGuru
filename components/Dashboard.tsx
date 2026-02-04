@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { TabView, IdentityData, ScheduleItem, ClassInfo, Student, AttendanceData, GradeData, Subject, LearningObjective, AttendanceRecord } from '../types';
-import { calculateStudentGrade } from '../utils/grading';
+
+import React from 'react';
+import { TabView, IdentityData, ScheduleItem, ClassInfo, Student, AttendanceData, GradeData, Subject, LearningObjective } from '../types';
+import { useDashboardLogic } from '../hooks/useDashboardLogic';
 
 interface Props {
   onNavigate: (tab: TabView, context?: { className?: string, scheduleId?: string }) => void;
@@ -114,86 +115,17 @@ const ScheduleCard: React.FC<ScheduleCardProps> = ({ id, startTime, endTime, cla
     );
 }
 
-const DAYS_MAP = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
-
-export const Dashboard: React.FC<Props> = ({ onNavigate, identity, schedules, classes, students, attendanceData, gradeData, subject, tps }) => {
-  const [currentTime, setCurrentTime] = useState(new Date());
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-        setCurrentTime(new Date());
-    }, 1000); 
-    
-    return () => clearInterval(timer);
-  }, []);
-
-  const currentDayName = DAYS_MAP[currentTime.getDay()];
-  
-  // Filter schedules for today
-  const todaysSchedules = useMemo(() => {
-      return schedules
-        .filter(s => s.day === currentDayName)
-        .sort((a, b) => a.startTime.localeCompare(b.startTime));
-  }, [schedules, currentDayName]);
-
-  const dateString = currentTime.toLocaleDateString('id-ID', { 
-    weekday: 'long', 
-    year: 'numeric', 
-    month: 'long', 
-    day: 'numeric',
-    timeZone: 'Asia/Makassar' 
+export const Dashboard: React.FC<Props> = (props) => {
+  const { state, computed } = useDashboardLogic({
+      schedules: props.schedules,
+      attendanceData: props.attendanceData,
+      gradeData: props.gradeData,
+      subject: props.subject,
+      tps: props.tps
   });
 
-  const todayIsoDate = useMemo(() => {
-      const d = new Date();
-      // Simple ISO Date (YYYY-MM-DD) for local matching
-      return d.toISOString().split('T')[0];
-  }, []);
-
-  // --- STATS CALCULATION ---
-
-  // 1. Average Grade Calculation
-  const averageGrade = useMemo(() => {
-      const studentIds = Object.keys(gradeData);
-      if (studentIds.length === 0) return 0;
-
-      let totalScore = 0;
-      let count = 0;
-
-      studentIds.forEach(sid => {
-          // Note: Passing default weights as summary (assuming 90/10 as per default in GradingSheet)
-          const result = calculateStudentGrade(sid, gradeData, tps, subject.kktp);
-          if (result.finalScore > 0) {
-              totalScore += result.finalScore;
-              count++;
-          }
-      });
-
-      return count > 0 ? (totalScore / count).toFixed(1) : 0;
-  }, [gradeData, subject.kktp, tps]);
-
-  // 2. Attendance Stats for TODAY
-  const attendanceStats = useMemo(() => {
-      let present = 0, izin = 0, sakit = 0, alpa = 0;
-      
-      // Look at attendance records for TODAY's schedules
-      todaysSchedules.forEach(schedule => {
-          const records = attendanceData[schedule.id]?.[todayIsoDate];
-          if (records) {
-              Object.values(records).forEach((record: AttendanceRecord) => {
-                  if (record.status === 'H') present++;
-                  else if (record.status === 'I') izin++;
-                  else if (record.status === 'S') sakit++;
-                  else if (record.status === 'A') alpa++;
-              });
-          }
-      });
-
-      const total = present + izin + sakit + alpa;
-      const percentage = total > 0 ? Math.round((present / total) * 100) : 0;
-
-      return { present, izin, sakit, alpa, total, percentage };
-  }, [todaysSchedules, attendanceData, todayIsoDate]);
+  const { currentTime } = state;
+  const { dateString, todaysSchedules, averageGrade, attendanceStats } = computed;
 
   return (
     <div className="w-full max-w-7xl mx-auto space-y-8">
@@ -213,30 +145,30 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, identity, schedules, cl
             <div className="flex-1">
                 <div className="flex items-center gap-2 mb-2">
                     <span className="px-2.5 py-1 bg-primary/10 text-primary rounded-full text-[10px] font-bold uppercase tracking-wider border border-primary/20">
-                        Semester {identity.semester}
+                        Semester {props.identity.semester}
                     </span>
                     <span className="px-2.5 py-1 bg-slate-100 text-slate-600 rounded-full text-[10px] font-bold uppercase tracking-wider border border-slate-200">
-                        {identity.academicYear}
+                        {props.identity.academicYear}
                     </span>
                 </div>
                 <h1 className="text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight">
-                    {identity.teacherName}
+                    {props.identity.teacherName}
                 </h1>
                 
                 {/* School Name & Role Integration */}
                 <div className="flex flex-wrap items-center gap-3 mt-3 text-sm md:text-base">
                      <div className="flex items-center gap-2 text-slate-500 font-semibold">
                         <span className="material-symbols-outlined text-lg text-primary">domain</span>
-                        {identity.schoolName}
+                        {props.identity.schoolName}
                      </div>
                      <span className="text-slate-300">|</span>
                      <div className="flex items-center gap-2 text-slate-700 font-bold bg-slate-50 px-3 py-1 rounded-lg border border-slate-200">
                         <span className="material-symbols-outlined text-sm text-slate-500">
-                            {identity.role === 'CLASS_TEACHER' ? 'meeting_room' : 'menu_book'}
+                            {props.identity.role === 'CLASS_TEACHER' ? 'meeting_room' : 'menu_book'}
                         </span>
-                        {identity.role === 'CLASS_TEACHER' 
+                        {props.identity.role === 'CLASS_TEACHER' 
                             ? 'Guru Kelas' 
-                            : `Guru Mapel ${identity.subjectName}`
+                            : `Guru Mapel ${props.identity.subjectName}`
                         }
                      </div>
                 </div>
@@ -264,7 +196,7 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, identity, schedules, cl
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard 
           title="Kelas Aktif" 
-          value={classes.length.toString()} 
+          value={props.classes.length.toString()} 
           subText="Kelas Terdaftar" 
           subColor="text-green-600" 
           bgIcon="bg-blue-50 text-blue-600" 
@@ -272,7 +204,7 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, identity, schedules, cl
         />
         <StatCard 
           title="Total Siswa" 
-          value={students.length.toString()} 
+          value={props.students.length.toString()} 
           subText="Siswa Terdaftar" 
           subColor="text-slate-500" 
           bgIcon="bg-orange-50 text-orange-600" 
@@ -315,7 +247,7 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, identity, schedules, cl
                         key={schedule.id}
                         {...schedule}
                         currentTime={currentTime}
-                        onNavigate={onNavigate}
+                        onNavigate={props.onNavigate}
                     />
                 ))
             ) : (

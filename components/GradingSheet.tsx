@@ -1,13 +1,8 @@
 
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
-import { z } from 'zod'; 
-import { 
-  Student, 
-  LearningObjective, 
-  GradeData, 
-  Subject 
-} from '../types';
+import React from 'react';
+import { Student, LearningObjective, GradeData, Subject } from '../types';
 import { calculateStudentGrade } from '../utils/grading';
+import { useGradingLogic } from '../hooks/useGradingLogic';
 
 interface Props {
   students: Student[];
@@ -18,8 +13,6 @@ interface Props {
   setGlobalGradeData: React.Dispatch<React.SetStateAction<GradeData>>;
 }
 
-const scoreSchema = z.number().min(0, "Min 0").max(100, "Max 100").optional();
-
 // Mock Subjects for the Dropdown (Simulating multiple subjects)
 const AVAILABLE_SUBJECTS = [
     { id: 's1', name: 'Matematika - Fase E' },
@@ -27,91 +20,16 @@ const AVAILABLE_SUBJECTS = [
     { id: 's3', name: 'Kimia - Fase E' },
 ];
 
-export const GradingSheet: React.FC<Props> = ({ students, tps, subject, initialClass, globalGradeData, setGlobalGradeData }) => {
-  const [errorMap, setErrorMap] = useState<{[key: string]: string}>({});
-  const [currentTime, setCurrentTime] = useState(new Date());
-  
-  // Weights State
-  const [showConfig, setShowConfig] = useState(false);
-  const [weights, setWeights] = useState({ criteria: 90, attitude: 10 });
-  const [tempWeights, setTempWeights] = useState({ criteria: 90, attitude: 10 });
+export const GradingSheet: React.FC<Props> = (props) => {
+  const { 
+    state, 
+    setters, 
+    computed, 
+    handlers 
+  } = useGradingLogic(props);
 
-  // Filters
-  const [selectedClass, setSelectedClass] = useState<string>('');
-  const [selectedSubject, setSelectedSubject] = useState<string>(subject.id);
-
-  // Effect to handle navigation from Dashboard
-  useEffect(() => {
-    if (initialClass) {
-        setSelectedClass(initialClass);
-    }
-  }, [initialClass]);
-
-  // Derive unique classes from students list
-  const availableClasses = useMemo(() => {
-      const classes = new Set(students.map(s => s.className).filter(Boolean));
-      return Array.from(classes).sort() as string[];
-  }, [students]);
-
-  // Filter students based on selection
-  const filteredStudents = useMemo(() => {
-      if (!selectedClass) return [];
-      return students.filter(s => s.className === selectedClass);
-  }, [students, selectedClass]);
-
-  useEffect(() => {
-    // Update time every minute
-    const interval = setInterval(() => setCurrentTime(new Date()), 60000);
-    return () => clearInterval(interval);
-  }, []);
-  
-  const handleScoreChange = useCallback((
-    studentId: string, 
-    type: 'criteria' | 'attitude', 
-    id: string | 'value', 
-    value: string
-  ) => {
-    const numValue = value === '' ? undefined : parseFloat(value);
-    const result = scoreSchema.safeParse(numValue);
-    const errorKey = `${studentId}-${type}-${id}`;
-
-    if (!result.success && value !== '') {
-        setErrorMap(prev => ({...prev, [errorKey]: result.error.issues[0].message}));
-    } else {
-        setErrorMap(prev => {
-            const newMap = {...prev};
-            delete newMap[errorKey];
-            return newMap;
-        });
-    }
-    
-    setGlobalGradeData(prev => {
-      const studentData = prev[studentId] || { scores: {}, attitude: 0 };
-      if (type === 'criteria') {
-        return { ...prev, [studentId]: { ...studentData, scores: { ...studentData.scores, [id]: numValue as number } } };
-      } else {
-        return { ...prev, [studentId]: { ...studentData, attitude: numValue || 0 } };
-      }
-    });
-  }, [setGlobalGradeData]);
-
-  const handleSaveWeights = () => {
-      if (tempWeights.criteria + tempWeights.attitude !== 100) {
-          alert("Total bobot harus 100%");
-          return;
-      }
-      setWeights(tempWeights);
-      setShowConfig(false);
-  }
-
-  // Stats Calculation (based on filtered students)
-  const stats = filteredStudents.reduce((acc, student) => {
-      const res = calculateStudentGrade(student.id, globalGradeData, tps, subject.kktp);
-      if (res.finalScore > 0) {
-          if (res.isPassed) acc.tuntas++; else acc.remedial++;
-      }
-      return acc;
-  }, { tuntas: 0, remedial: 0 });
+  const { errorMap, currentTime, showConfig, tempWeights, selectedClass, selectedSubject } = state;
+  const { availableClasses, filteredStudents, stats } = computed;
 
   return (
     <div className="max-w-[1440px] mx-auto pb-8 relative">
@@ -121,7 +39,7 @@ export const GradingSheet: React.FC<Props> = ({ students, tps, subject, initialC
         <span className="material-symbols-outlined text-sm">chevron_right</span>
         <a className="hover:text-primary cursor-pointer">Input Nilai</a>
         <span className="material-symbols-outlined text-sm">chevron_right</span>
-        <span className="text-slate-900 font-bold">{subject.name}</span>
+        <span className="text-slate-900 font-bold">{props.subject.name}</span>
       </div>
 
       {/* Header */}
@@ -142,7 +60,7 @@ export const GradingSheet: React.FC<Props> = ({ students, tps, subject, initialC
                 <div className="relative">
                     <select 
                         value={selectedClass} 
-                        onChange={(e) => setSelectedClass(e.target.value)}
+                        onChange={(e) => setters.setSelectedClass(e.target.value)}
                         className="w-full appearance-none pl-10 pr-8 py-2.5 border border-slate-200 rounded-lg text-sm font-bold text-slate-900 bg-slate-50 hover:bg-white focus:ring-2 focus:ring-primary focus:border-transparent outline-none cursor-pointer transition-all"
                     >
                         <option value="">-- Pilih Kelas --</option>
@@ -161,7 +79,7 @@ export const GradingSheet: React.FC<Props> = ({ students, tps, subject, initialC
                 <div className="relative">
                     <select 
                         value={selectedSubject} 
-                        onChange={(e) => setSelectedSubject(e.target.value)}
+                        onChange={(e) => setters.setSelectedSubject(e.target.value)}
                         className="w-full appearance-none pl-10 pr-8 py-2.5 border border-slate-200 rounded-lg text-sm font-bold text-slate-900 bg-slate-50 hover:bg-white focus:ring-2 focus:ring-primary focus:border-transparent outline-none cursor-pointer transition-all"
                     >
                         {AVAILABLE_SUBJECTS.map(subj => (
@@ -177,10 +95,10 @@ export const GradingSheet: React.FC<Props> = ({ students, tps, subject, initialC
         <div className="flex items-center gap-3">
              <div className="px-3 py-1 bg-slate-100 rounded border border-slate-200 flex flex-col">
                 <span className="text-[10px] font-bold text-slate-400 uppercase">KKTP</span>
-                <span className="text-sm font-bold text-slate-900">{subject.kktp}</span>
+                <span className="text-sm font-bold text-slate-900">{props.subject.kktp}</span>
              </div>
              <button 
-                onClick={() => setShowConfig(true)}
+                onClick={() => setters.setShowConfig(true)}
                 className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold hover:bg-slate-50 transition-colors text-slate-700 shadow-sm"
              >
                 <span className="material-symbols-outlined text-sm text-primary">settings</span>
@@ -199,7 +117,7 @@ export const GradingSheet: React.FC<Props> = ({ students, tps, subject, initialC
                 <tr className="bg-slate-50 border-b border-slate-200">
                     <th className="sticky-col bg-slate-50 w-12 px-4 py-2 border-r border-slate-200"></th>
                     <th className="sticky-col-2 bg-slate-50 w-64 px-4 py-2 border-r border-slate-200"></th>
-                    {tps.map(tp => (
+                    {props.tps.map(tp => (
                         <th 
                             key={tp.id} 
                             className="px-4 py-2 text-center text-[11px] font-bold text-slate-500 uppercase tracking-widest border-r border-slate-200 relative group cursor-help bg-slate-50 hover:bg-slate-100 transition-colors" 
@@ -220,7 +138,7 @@ export const GradingSheet: React.FC<Props> = ({ students, tps, subject, initialC
                 <tr className="bg-slate-50 border-b border-slate-200">
                     <th className="sticky-col bg-slate-50 w-12 px-4 py-3 text-xs font-bold text-slate-600 border-r border-slate-200 text-center">No</th>
                     <th className="sticky-col-2 bg-slate-50 w-64 px-4 py-3 text-xs font-bold text-slate-600 border-r border-slate-200">Nama Siswa</th>
-                    {tps.map(tp => (
+                    {props.tps.map(tp => (
                         tp.criteria.length > 0 ? (
                             tp.criteria.map(cr => (
                                 <th 
@@ -232,7 +150,6 @@ export const GradingSheet: React.FC<Props> = ({ students, tps, subject, initialC
                                     <div className="absolute hidden group-hover:block bg-slate-800 text-white p-2 rounded-lg text-xs w-48 bottom-full mb-2 left-1/2 -translate-x-1/2 z-50 font-normal shadow-xl">
                                         <div className="font-bold text-green-200 mb-0.5 border-b border-white/20 pb-1">{cr.code.toUpperCase()}</div>
                                         {cr.description}
-                                        {/* Little triangle arrow */}
                                         <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-slate-800"></div>
                                     </div>
                                 </th>
@@ -249,7 +166,7 @@ export const GradingSheet: React.FC<Props> = ({ students, tps, subject, initialC
                 <tbody className="divide-y divide-slate-100">
                     {filteredStudents.length > 0 ? (
                         filteredStudents.map((student, index) => {
-                            const result = calculateStudentGrade(student.id, globalGradeData, tps, subject.kktp);
+                            const result = calculateStudentGrade(student.id, props.globalGradeData, props.tps, props.subject.kktp);
                             return (
                                 <tr key={student.id} className="group hover:bg-primary/5 transition-colors">
                                     <td className="sticky-col bg-white group-hover:bg-[#f2f8fe] text-center text-xs text-slate-500 border-r border-slate-100 transition-colors">{index + 1}</td>
@@ -262,7 +179,7 @@ export const GradingSheet: React.FC<Props> = ({ students, tps, subject, initialC
                                     </td>
                                     
                                     {/* Dynamic Criteria Inputs Nested by TP */}
-                                    {tps.map(tp => (
+                                    {props.tps.map(tp => (
                                         tp.criteria.length > 0 ? (
                                             tp.criteria.map(cr => {
                                                 const err = errorMap[`${student.id}-criteria-${cr.id}`];
@@ -271,8 +188,8 @@ export const GradingSheet: React.FC<Props> = ({ students, tps, subject, initialC
                                                         <input 
                                                             type="number" 
                                                             className={`w-full h-10 border-none bg-transparent text-center text-sm focus:ring-0 focus:bg-white focus:shadow-inner ${err ? 'text-red-500 bg-red-50' : 'text-slate-800'}`}
-                                                            value={globalGradeData[student.id]?.scores?.[cr.id] ?? ''}
-                                                            onChange={(e) => handleScoreChange(student.id, 'criteria', cr.id, e.target.value)}
+                                                            value={props.globalGradeData[student.id]?.scores?.[cr.id] ?? ''}
+                                                            onChange={(e) => handlers.handleScoreChange(student.id, 'criteria', cr.id, e.target.value)}
                                                             placeholder="-"
                                                         />
                                                     </td>
@@ -288,8 +205,8 @@ export const GradingSheet: React.FC<Props> = ({ students, tps, subject, initialC
                                         <input 
                                             type="number"
                                             className="w-full h-10 border-none bg-transparent text-center text-sm focus:ring-0 focus:bg-white focus:shadow-inner text-slate-800"
-                                            value={globalGradeData[student.id]?.attitude ?? ''}
-                                            onChange={(e) => handleScoreChange(student.id, 'attitude', 'value', e.target.value)}
+                                            value={props.globalGradeData[student.id]?.attitude ?? ''}
+                                            onChange={(e) => handlers.handleScoreChange(student.id, 'attitude', 'value', e.target.value)}
                                             placeholder="-"
                                         />
                                     </td>
@@ -354,7 +271,7 @@ export const GradingSheet: React.FC<Props> = ({ students, tps, subject, initialC
             <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl">
                 <div className="p-4 border-b border-slate-100 flex justify-between items-center">
                     <h3 className="font-bold text-slate-900">Parameter Penilaian</h3>
-                    <button onClick={() => setShowConfig(false)} className="text-slate-400 hover:text-slate-600">
+                    <button onClick={() => setters.setShowConfig(false)} className="text-slate-400 hover:text-slate-600">
                         <span className="material-symbols-outlined">close</span>
                     </button>
                 </div>
@@ -365,7 +282,7 @@ export const GradingSheet: React.FC<Props> = ({ students, tps, subject, initialC
                             <input 
                                 type="number" 
                                 value={tempWeights.criteria}
-                                onChange={(e) => setTempWeights(prev => ({...prev, criteria: Number(e.target.value)}))}
+                                onChange={(e) => setters.setTempWeights(prev => ({...prev, criteria: Number(e.target.value)}))}
                                 className="w-full border-slate-200 rounded-lg text-center font-bold text-slate-900" 
                             />
                             <span className="text-slate-500 font-bold">%</span>
@@ -377,7 +294,7 @@ export const GradingSheet: React.FC<Props> = ({ students, tps, subject, initialC
                              <input 
                                 type="number" 
                                 value={tempWeights.attitude}
-                                onChange={(e) => setTempWeights(prev => ({...prev, attitude: Number(e.target.value)}))}
+                                onChange={(e) => setters.setTempWeights(prev => ({...prev, attitude: Number(e.target.value)}))}
                                 className="w-full border-slate-200 rounded-lg text-center font-bold text-slate-900" 
                             />
                             <span className="text-slate-500 font-bold">%</span>
@@ -387,7 +304,7 @@ export const GradingSheet: React.FC<Props> = ({ students, tps, subject, initialC
                          Total: {tempWeights.criteria + tempWeights.attitude}%
                      </div>
                      <button 
-                        onClick={handleSaveWeights}
+                        onClick={handlers.handleSaveWeights}
                         className="w-full py-2.5 bg-primary text-white rounded-lg font-bold hover:bg-blue-600"
                      >
                          Simpan Parameter

@@ -1,8 +1,7 @@
 
-import React, { useState, useMemo } from 'react';
+import React from 'react';
 import { ClassInfo, IdentityData, Student } from '../types';
-
-declare const Swal: any;
+import { useClassLogic } from '../hooks/useClassLogic';
 
 interface Props {
   identity: IdentityData;
@@ -12,102 +11,25 @@ interface Props {
   onBack: () => void;
 }
 
-const ALL_PHASES = [
-    { label: "Fase A (Kelas 1-2)", level: "SD" },
-    { label: "Fase B (Kelas 3-4)", level: "SD" },
-    { label: "Fase C (Kelas 5-6)", level: "SD" },
-    { label: "Fase D (Kelas 7-9)", level: "SMP" },
-    { label: "Fase E (Kelas 10)", level: "SMA" }, // Also SMK
-    { label: "Fase F (Kelas 11-12)", level: "SMA" } // Also SMK
-];
+export const ClassManager: React.FC<Props> = (props) => {
+  const {
+    state,
+    setters,
+    computed,
+    handlers
+  } = useClassLogic(props);
 
-export const ClassManager: React.FC<Props> = ({ identity, classes, students, onUpdateClasses, onBack }) => {
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const { isModalOpen, editingId, formData } = state;
+  const { availablePhases } = computed;
 
-  // Filter Phases based on Identity Level
-  const availablePhases = useMemo(() => {
-      if (identity.level === 'SMK') {
-          return ALL_PHASES.filter(p => p.level === 'SMA'); // SMK uses E and F too
-      }
-      return ALL_PHASES.filter(p => p.level === identity.level);
-  }, [identity.level]);
-
-  // Default value logic
-  const defaultLevel = availablePhases.length > 0 ? availablePhases[0].label : '';
-
-  const [formData, setFormData] = useState({
-      name: '',
-      level: defaultLevel,
-  });
-
-  const handleOpenModal = (cls?: ClassInfo) => {
-      if (cls) {
-          setEditingId(cls.id);
-          setFormData({
-              name: cls.name,
-              level: cls.level,
-          });
-      } else {
-          setEditingId(null);
-          setFormData({ name: '', level: defaultLevel });
-      }
-      setIsModalOpen(true);
-  };
-
-  const handleSaveClass = (e: React.FormEvent) => {
-      e.preventDefault();
-      
-      if (editingId) {
-          // Update
-          const updatedClasses = classes.map(c => c.id === editingId ? { 
-              ...c, 
-              ...formData,
-          } : c);
-          onUpdateClasses(updatedClasses);
-      } else {
-          // Add
-          const newClass: ClassInfo = {
-              id: Date.now().toString(),
-              name: formData.name,
-              level: formData.level,
-              studentCount: 0, // Initial value, but display uses dynamic calc
-          };
-          onUpdateClasses([...classes, newClass]);
-      }
-      setIsModalOpen(false);
-  };
-
-  const handleDeleteClass = (id: string) => {
-      Swal.fire({
-          title: 'Hapus Kelas?',
-          text: "Data siswa yang terhubung mungkin akan terpengaruh!",
-          icon: 'warning',
-          showCancelButton: true,
-          confirmButtonColor: '#d33',
-          cancelButtonColor: '#3085d6',
-          confirmButtonText: 'Ya, hapus!',
-          cancelButtonText: 'Batal'
-      }).then((result: any) => {
-          if (result.isConfirmed) {
-              onUpdateClasses(classes.filter(c => c.id !== id));
-              Swal.fire(
-                  'Terhapus!',
-                  'Data kelas berhasil dihapus.',
-                  'success'
-              )
-          }
-      });
-  };
-
-  // Calculate Total Students from passed prop
-  const totalStudents = students.length;
+  // Calculate Total Students from passed prop (UI concern)
+  const totalStudents = props.students.length;
 
   return (
     <div className="w-full max-w-7xl mx-auto">
       {/* Breadcrumbs */}
       <div className="flex items-center gap-2 mb-4">
-        <button onClick={onBack} className="text-slate-500 text-sm font-medium hover:text-primary">Beranda</button>
+        <button onClick={props.onBack} className="text-slate-500 text-sm font-medium hover:text-primary">Beranda</button>
         <span className="text-slate-400 text-sm font-medium">/</span>
         <span className="text-primary text-sm font-bold">Master Data Kelas</span>
       </div>
@@ -116,15 +38,12 @@ export const ClassManager: React.FC<Props> = ({ identity, classes, students, onU
       <div className="flex items-center justify-between mb-8">
         <div className="flex flex-col gap-1">
           <h2 className="text-slate-900 text-3xl font-extrabold tracking-tight">Master Data Kelas</h2>
-          <p className="text-slate-500 text-base font-normal">Kelola informasi kelas dan tingkat (Fase) untuk jenjang <strong>{identity.level}</strong>.</p>
+          <p className="text-slate-500 text-base font-normal">Kelola informasi kelas dan tingkat (Fase) untuk jenjang <strong>{props.identity.level}</strong>.</p>
         </div>
         <div className="flex gap-2">
-           <button className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-bold hover:bg-slate-50 transition-colors text-slate-700">
-            <span className="material-symbols-outlined text-sm">download</span>
-            Export Data
-          </button>
+          {/* Export button removed as requested */}
           <button 
-            onClick={() => handleOpenModal()}
+            onClick={() => handlers.handleOpenModal()}
             className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg text-sm font-bold hover:bg-blue-600 transition-colors shadow-lg shadow-blue-200"
           >
             <span className="material-symbols-outlined text-sm">add</span>
@@ -139,7 +58,7 @@ export const ClassManager: React.FC<Props> = ({ identity, classes, students, onU
           <div className="bg-blue-50 text-blue-600 p-3 rounded-lg"><span className="material-symbols-outlined">class</span></div>
           <div>
             <p className="text-xs text-slate-500 font-bold uppercase tracking-wider">Total Kelas</p>
-            <p className="text-2xl font-bold text-slate-900">{classes.length} Kelas</p>
+            <p className="text-2xl font-bold text-slate-900">{props.classes.length} Kelas</p>
           </div>
         </div>
         <div className="bg-white border border-slate-200 p-6 rounded-xl shadow-sm flex items-center gap-4">
@@ -179,9 +98,9 @@ export const ClassManager: React.FC<Props> = ({ identity, classes, students, onU
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {classes.length > 0 ? classes.map((cls) => {
+              {props.classes.length > 0 ? props.classes.map((cls) => {
                 // CALCULATE COUNT DYNAMICALLY
-                const count = students.filter(s => s.className === cls.name).length;
+                const count = props.students.filter(s => s.className === cls.name).length;
                 return (
                     <tr key={cls.id} className="hover:bg-slate-50 transition-colors group cursor-pointer">
                     <td className="px-6 py-4">
@@ -197,10 +116,10 @@ export const ClassManager: React.FC<Props> = ({ identity, classes, students, onU
                     </td>
                     <td className="px-6 py-4 text-right">
                         <div className="flex justify-end gap-2">
-                        <button onClick={() => handleOpenModal(cls)} className="p-2 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors" title="Edit">
+                        <button onClick={() => handlers.handleOpenModal(cls)} className="p-2 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors" title="Edit">
                             <span className="material-symbols-outlined text-sm">edit</span>
                         </button>
-                        <button onClick={() => handleDeleteClass(cls.id)} className="p-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg transition-colors" title="Delete">
+                        <button onClick={() => handlers.handleDeleteClass(cls.id)} className="p-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg transition-colors" title="Delete">
                             <span className="material-symbols-outlined text-sm">delete</span>
                         </button>
                         </div>
@@ -221,7 +140,7 @@ export const ClassManager: React.FC<Props> = ({ identity, classes, students, onU
         
         {/* Pagination */}
         <div className="px-6 py-4 border-t border-slate-200 flex items-center justify-between">
-            <p className="text-sm text-slate-500">Menampilkan {classes.length} kelas</p>
+            <p className="text-sm text-slate-500">Menampilkan {props.classes.length} kelas</p>
         </div>
       </div>
 
@@ -231,11 +150,11 @@ export const ClassManager: React.FC<Props> = ({ identity, classes, students, onU
               <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl transform transition-all scale-100">
                   <div className="p-6 border-b border-slate-100 flex justify-between items-center">
                       <h3 className="text-xl font-bold text-slate-900">{editingId ? 'Edit Kelas' : 'Tambah Kelas Baru'}</h3>
-                      <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-red-500 transition-colors">
+                      <button onClick={() => setters.setIsModalOpen(false)} className="text-slate-400 hover:text-red-500 transition-colors">
                           <span className="material-symbols-outlined">close</span>
                       </button>
                   </div>
-                  <form onSubmit={handleSaveClass} className="p-6 space-y-4">
+                  <form onSubmit={handlers.handleSaveClass} className="p-6 space-y-4">
                       <div className="space-y-2">
                           <label className="text-sm font-bold text-slate-700">Nama Kelas <span className="text-red-500">*</span></label>
                           <input 
@@ -244,15 +163,15 @@ export const ClassManager: React.FC<Props> = ({ identity, classes, students, onU
                               placeholder="Contoh: 10-C"
                               className="w-full rounded-lg border-slate-200 focus:ring-2 focus:ring-primary focus:border-transparent text-sm font-bold text-slate-900 bg-white"
                               value={formData.name}
-                              onChange={(e) => setFormData({...formData, name: e.target.value})}
+                              onChange={(e) => setters.setFormData({...formData, name: e.target.value})}
                           />
                       </div>
                       <div className="space-y-2">
-                          <label className="text-sm font-bold text-slate-700">Tingkat / Fase ({identity.level}) <span className="text-red-500">*</span></label>
+                          <label className="text-sm font-bold text-slate-700">Tingkat / Fase ({props.identity.level}) <span className="text-red-500">*</span></label>
                           <select 
                              className="w-full rounded-lg border-slate-200 focus:ring-2 focus:ring-primary focus:border-transparent text-sm font-bold text-slate-900 bg-white cursor-pointer"
                              value={formData.level}
-                             onChange={(e) => setFormData({...formData, level: e.target.value})}
+                             onChange={(e) => setters.setFormData({...formData, level: e.target.value})}
                           >
                               {availablePhases.map(phase => (
                                   <option key={phase.label} value={phase.label}>{phase.label}</option>
@@ -263,7 +182,7 @@ export const ClassManager: React.FC<Props> = ({ identity, classes, students, onU
                       <div className="pt-4 flex gap-3">
                           <button 
                               type="button" 
-                              onClick={() => setIsModalOpen(false)}
+                              onClick={() => setters.setIsModalOpen(false)}
                               className="flex-1 py-2.5 border border-slate-200 rounded-lg text-sm font-bold text-slate-600 hover:bg-slate-50"
                           >
                               Batal

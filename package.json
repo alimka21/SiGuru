@@ -1,3 +1,4 @@
+
 {
   "name": "sistem-administrasi-guru",
   "version": "1.0.0",
@@ -10,6 +11,7 @@
   "dependencies": {
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-router-dom": "^6.22.3",
     "@tanstack/react-query": "^5.28.4",
     "@tanstack/react-table": "^8.13.2",
     "zod": "^3.22.4",

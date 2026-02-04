@@ -1,15 +1,14 @@
 
-import React, { useState, useMemo } from 'react';
+import React from 'react';
 import { User, SchoolLevel, TeacherRole } from '../types';
-import { RegisterData } from './LoginPage'; // Re-use RegisterData type
-
-declare const Swal: any;
+import { RegisterData } from './LoginPage';
+import { useAdminLogic } from '../hooks/useAdminLogic';
 
 interface Props {
   users: User[];
   onAddUser: (data: RegisterData) => void;
   onDeleteUser: (id: string) => void;
-  onUpdateUser: (id: string, data: RegisterData) => void; // Updated signature
+  onUpdateUser: (id: string, data: RegisterData) => void;
   onApproveUser: (id: string) => void; 
   onRejectUser: (id: string) => void; 
   onGoToApp: () => void;
@@ -18,110 +17,24 @@ interface Props {
   onUpdateWaNumber: (num: string) => void;
 }
 
-export const AdminPanel: React.FC<Props> = ({ 
-    users, onAddUser, onDeleteUser, onUpdateUser, onApproveUser, onRejectUser,
-    onGoToApp, onLogout, 
-    waNumber, onUpdateWaNumber 
-}) => {
-  // User Management State
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingUser, setEditingUser] = useState<User | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [userTab, setUserTab] = useState<'ACTIVE' | 'PENDING'>('ACTIVE'); 
-  
-  // Settings State
-  const [tempWaNumber, setTempWaNumber] = useState(waNumber);
-
-  // Form Data for Add User
-  const [formData, setFormData] = useState<RegisterData>({ 
-      email: '', name: '', password: '', role: 'SUBJECT_TEACHER', level: 'SMA' 
+export const AdminPanel: React.FC<Props> = (props) => {
+  // Call Custom Hook to get Logic and State
+  const { 
+    state, 
+    setters, 
+    computed, 
+    handlers 
+  } = useAdminLogic({
+    users: props.users,
+    waNumber: props.waNumber,
+    onAddUser: props.onAddUser,
+    onUpdateUser: props.onUpdateUser,
+    onDeleteUser: props.onDeleteUser,
+    onUpdateWaNumber: props.onUpdateWaNumber
   });
 
-  // Statistics
-  const stats = useMemo(() => {
-    return {
-      total: users.length,
-      active: users.filter(u => u.isActive).length,
-      pending: users.filter(u => !u.isActive).length,
-      admins: users.filter(u => u.role === 'ADMIN').length,
-      // Role Stats
-      classTeachers: users.filter(u => u.role === 'CLASS_TEACHER' && u.isActive).length,
-      subjectTeachers: users.filter(u => u.role === 'SUBJECT_TEACHER' && u.isActive).length,
-      // Level Stats
-      sd: users.filter(u => u.level === 'SD' && u.isActive).length,
-      smp: users.filter(u => u.level === 'SMP' && u.isActive).length,
-      sma: users.filter(u => u.level === 'SMA' && u.isActive).length,
-      smk: users.filter(u => u.level === 'SMK' && u.isActive).length,
-    };
-  }, [users]);
-
-  // Filtered Users based on Tab and Search
-  const filteredUsers = useMemo(() => {
-    const byTab = users.filter(u => userTab === 'ACTIVE' ? u.isActive : !u.isActive);
-    
-    return byTab.filter(u => 
-      u.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-      u.email.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-  }, [users, searchQuery, userTab]);
-
-  const handleOpenModal = (user?: User) => {
-    if (user) {
-      setEditingUser(user);
-      // Untuk edit, load data existing.
-      setFormData({ 
-          email: user.email, 
-          name: user.name, 
-          password: '', // Password tidak digunakan saat Edit
-          role: user.role, 
-          level: user.level || 'SMA' 
-      });
-    } else {
-      setEditingUser(null);
-      setFormData({ email: '', name: '', password: '', role: 'SUBJECT_TEACHER', level: 'SMA' });
-    }
-    setIsModalOpen(true);
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (editingUser) {
-      // Update logic
-      onUpdateUser(editingUser.id, formData);
-    } else {
-      // Add logic (Skenario A)
-      if (!formData.email || !formData.name || !formData.password) {
-          Swal.fire('Error', 'Nama, Email, dan Password wajib diisi.', 'error');
-          return;
-      }
-      if (formData.password.length < 6) {
-          Swal.fire('Error', 'Password minimal 6 karakter.', 'error');
-          return;
-      }
-      onAddUser(formData);
-    }
-    setIsModalOpen(false);
-  };
-
-  const handleDelete = (id: string) => {
-    Swal.fire({
-      title: 'Hapus Pengguna?',
-      text: "Data administrasi pengguna ini akan hilang permanen!",
-      icon: 'warning',
-      showCancelButton: true,
-      confirmButtonColor: '#d33',
-      confirmButtonText: 'Hapus',
-      cancelButtonText: 'Batal'
-    }).then((result: any) => {
-      if (result.isConfirmed) {
-        onDeleteUser(id);
-      }
-    });
-  };
-
-  const handleSaveSettings = () => {
-      onUpdateWaNumber(tempWaNumber);
-  };
+  const { stats, filteredUsers } = computed;
+  const { isModalOpen, editingUser, userTab, formData, tempWaNumber, searchQuery } = state;
 
   return (
     <div className="flex flex-col min-h-screen font-sans bg-slate-50">
@@ -140,7 +53,7 @@ export const AdminPanel: React.FC<Props> = ({
 
             <div className="flex items-center gap-4">
                <button 
-                  onClick={onGoToApp}
+                  onClick={props.onGoToApp}
                   className="flex items-center gap-2 px-4 py-2 rounded-lg text-white hover:bg-white/10 transition-colors text-sm font-bold border border-transparent hover:border-white/20"
                >
                   <span className="material-symbols-outlined text-[18px]">open_in_new</span>
@@ -148,7 +61,7 @@ export const AdminPanel: React.FC<Props> = ({
                </button>
                <div className="h-6 w-px bg-white/20"></div>
                <button 
-                  onClick={onLogout}
+                  onClick={props.onLogout}
                   className="flex items-center gap-2 px-4 py-2 rounded-lg text-red-300 hover:bg-red-900/30 hover:text-red-200 transition-colors text-sm font-bold"
                >
                   <span className="material-symbols-outlined text-[18px]">logout</span>
@@ -168,7 +81,7 @@ export const AdminPanel: React.FC<Props> = ({
                 <p className="text-slate-500">Kelola akses guru dan statistik sistem secara real-time.</p>
                 </div>
                 <button 
-                onClick={() => handleOpenModal()}
+                onClick={() => handlers.handleOpenModal()}
                 className="flex items-center gap-2 px-5 py-3 bg-primary text-white rounded-xl text-sm font-bold hover:bg-blue-600 shadow-lg shadow-blue-200 transition-all active:scale-95"
                 >
                 <span className="material-symbols-outlined text-sm">person_add</span>
@@ -190,7 +103,7 @@ export const AdminPanel: React.FC<Props> = ({
                             <input 
                                 type="text"
                                 value={tempWaNumber}
-                                onChange={(e) => setTempWaNumber(e.target.value.replace(/[^0-9]/g, ''))}
+                                onChange={(e) => setters.setTempWaNumber(e.target.value.replace(/[^0-9]/g, ''))}
                                 className="w-full pl-6 pr-4 py-2 border border-slate-200 rounded-lg text-sm font-bold text-slate-900 focus:ring-2 focus:ring-green-500"
                                 placeholder="628xxxxxxxx"
                             />
@@ -198,7 +111,7 @@ export const AdminPanel: React.FC<Props> = ({
                         <p className="text-[10px] text-slate-400">Gunakan format internasional tanpa '+'. Contoh: 6282335454864</p>
                     </div>
                     <button 
-                        onClick={handleSaveSettings}
+                        onClick={handlers.handleSaveSettings}
                         className="px-4 py-2.5 bg-slate-900 text-white rounded-lg text-sm font-bold hover:bg-slate-700 transition-colors mb-5"
                     >
                         Simpan
@@ -278,13 +191,13 @@ export const AdminPanel: React.FC<Props> = ({
                 <div className="border-b border-slate-200">
                     <div className="flex px-6 pt-4 gap-6">
                         <button 
-                            onClick={() => setUserTab('ACTIVE')}
+                            onClick={() => setters.setUserTab('ACTIVE')}
                             className={`pb-4 text-sm font-bold transition-all border-b-2 ${userTab === 'ACTIVE' ? 'border-primary text-primary' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
                         >
                             Pengguna Aktif
                         </button>
                         <button 
-                            onClick={() => setUserTab('PENDING')}
+                            onClick={() => setters.setUserTab('PENDING')}
                             className={`pb-4 text-sm font-bold transition-all border-b-2 relative ${userTab === 'PENDING' ? 'border-orange-500 text-orange-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
                         >
                             Calon Pengguna
@@ -304,7 +217,7 @@ export const AdminPanel: React.FC<Props> = ({
                             placeholder="Cari nama atau email..." 
                             className="pl-10 pr-4 py-2 border border-slate-200 rounded-lg text-sm font-bold text-slate-900 w-full focus:ring-2 focus:ring-primary focus:border-transparent outline-none placeholder:text-slate-400 bg-white"
                             value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
+                            onChange={(e) => setters.setSearchQuery(e.target.value)}
                         />
                     </div>
                 </div>
@@ -317,6 +230,7 @@ export const AdminPanel: React.FC<Props> = ({
                             <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Email Login</th>
                             <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Role</th>
                             <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Jenjang</th>
+                            <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider bg-yellow-50 text-yellow-700 border-l border-r border-yellow-200">Password</th>
                             <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Aksi</th>
                         </tr>
                     </thead>
@@ -340,27 +254,35 @@ export const AdminPanel: React.FC<Props> = ({
                                          <span className="text-xs text-slate-300">-</span>
                                      )}
                                 </td>
+                                {/* PASSWORD COLUMN */}
+                                <td className="px-6 py-4 bg-yellow-50/30 border-l border-r border-slate-100">
+                                    <div className="flex items-center gap-2">
+                                        <code className="text-xs font-mono text-slate-600 bg-white px-2 py-1 rounded border border-slate-200">
+                                            {user.password || '-'}
+                                        </code>
+                                    </div>
+                                </td>
                                 <td className="px-6 py-4 text-right">
                                     {/* Action Buttons Logic */}
                                     {user.role !== 'ADMIN' && (
                                         <div className="flex justify-end gap-2">
                                             {userTab === 'PENDING' ? (
                                                 <>
-                                                    <button onClick={() => onApproveUser(user.id)} className="flex items-center gap-1 px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-bold hover:bg-green-700 shadow-sm transition-colors" title="Terima User">
+                                                    <button onClick={() => props.onApproveUser(user.id)} className="flex items-center gap-1 px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-bold hover:bg-green-700 shadow-sm transition-colors" title="Terima User">
                                                         <span className="material-symbols-outlined text-sm">check</span>
                                                         Terima
                                                     </button>
-                                                    <button onClick={() => onRejectUser(user.id)} className="flex items-center gap-1 px-3 py-1.5 bg-white border border-red-200 text-red-600 rounded-lg text-xs font-bold hover:bg-red-50 shadow-sm transition-colors" title="Tolak User">
+                                                    <button onClick={() => props.onRejectUser(user.id)} className="flex items-center gap-1 px-3 py-1.5 bg-white border border-red-200 text-red-600 rounded-lg text-xs font-bold hover:bg-red-50 shadow-sm transition-colors" title="Tolak User">
                                                         <span className="material-symbols-outlined text-sm">close</span>
                                                         Tolak
                                                     </button>
                                                 </>
                                             ) : (
                                                 <div className="flex gap-2">
-                                                    <button onClick={() => handleOpenModal(user)} className="p-2 bg-white border border-slate-200 text-blue-600 hover:bg-blue-50 hover:border-blue-200 rounded-lg transition-colors shadow-sm" title="Edit">
+                                                    <button onClick={() => handlers.handleOpenModal(user)} className="p-2 bg-white border border-slate-200 text-blue-600 hover:bg-blue-50 hover:border-blue-200 rounded-lg transition-colors shadow-sm" title="Edit">
                                                         <span className="material-symbols-outlined text-sm">edit</span>
                                                     </button>
-                                                    <button onClick={() => handleDelete(user.id)} className="p-2 bg-white border border-slate-200 text-red-600 hover:bg-red-50 hover:border-red-200 rounded-lg transition-colors shadow-sm" title="Hapus">
+                                                    <button onClick={() => handlers.handleDelete(user.id)} className="p-2 bg-white border border-slate-200 text-red-600 hover:bg-red-50 hover:border-red-200 rounded-lg transition-colors shadow-sm" title="Hapus">
                                                         <span className="material-symbols-outlined text-sm">delete</span>
                                                     </button>
                                                 </div>
@@ -372,7 +294,7 @@ export const AdminPanel: React.FC<Props> = ({
                             ))
                         ) : (
                             <tr>
-                            <td colSpan={5} className="p-12 text-center text-slate-400 italic">
+                            <td colSpan={6} className="p-12 text-center text-slate-400 italic">
                                 {userTab === 'ACTIVE' 
                                     ? 'Tidak ada pengguna aktif yang ditemukan.' 
                                     : 'Tidak ada calon pengguna yang menunggu verifikasi.'}
@@ -392,11 +314,11 @@ export const AdminPanel: React.FC<Props> = ({
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all scale-100">
                <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
                   <h3 className="text-xl font-bold text-slate-900">{editingUser ? 'Edit Data Pengguna' : 'Tambah Akses Pengguna'}</h3>
-                  <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-red-500 transition-colors">
+                  <button onClick={() => setters.setIsModalOpen(false)} className="text-slate-400 hover:text-red-500 transition-colors">
                       <span className="material-symbols-outlined">close</span>
                   </button>
                </div>
-               <form onSubmit={handleSubmit} className="p-6 space-y-4">
+               <form onSubmit={handlers.handleSubmit} className="p-6 space-y-4">
                   
                   {/* Informasi Mode */}
                   {!editingUser && (
@@ -414,7 +336,7 @@ export const AdminPanel: React.FC<Props> = ({
                         className="w-full border-slate-200 rounded-lg text-sm font-bold text-slate-900 focus:ring-2 focus:ring-primary focus:border-transparent bg-white"
                         placeholder="Nama Guru"
                         value={formData.name}
-                        onChange={e => setFormData({...formData, name: e.target.value})}
+                        onChange={e => setters.setFormData({...formData, name: e.target.value})}
                      />
                   </div>
 
@@ -427,7 +349,7 @@ export const AdminPanel: React.FC<Props> = ({
                         className="w-full border-slate-200 rounded-lg text-sm font-bold text-slate-900 focus:ring-2 focus:ring-primary focus:border-transparent bg-white"
                         placeholder="contoh: guru@sekolah.id"
                         value={formData.email}
-                        onChange={e => setFormData({...formData, email: e.target.value})}
+                        onChange={e => setters.setFormData({...formData, email: e.target.value})}
                      />
                      {editingUser && <p className="text-[10px] text-orange-500 flex items-center gap-1 mt-1"><span className="material-symbols-outlined text-[10px]">warning</span> Mengubah email akan mengubah akses login user.</p>}
                   </div>
@@ -442,7 +364,7 @@ export const AdminPanel: React.FC<Props> = ({
                             className="w-full border-slate-200 rounded-lg text-sm font-bold text-slate-900 focus:ring-2 focus:ring-primary focus:border-transparent bg-white"
                             placeholder="Minimal 6 karakter"
                             value={formData.password}
-                            onChange={e => setFormData({...formData, password: e.target.value})}
+                            onChange={e => setters.setFormData({...formData, password: e.target.value})}
                         />
                         <p className="text-[10px] text-slate-400">Berikan password ini kepada guru tersebut.</p>
                       </div>
@@ -455,7 +377,7 @@ export const AdminPanel: React.FC<Props> = ({
                         <select
                            className="w-full border-slate-200 rounded-lg text-xs font-bold text-slate-900 focus:ring-2 focus:ring-primary focus:border-transparent bg-slate-50"
                            value={formData.role}
-                           onChange={(e) => setFormData({...formData, role: e.target.value as TeacherRole})}
+                           onChange={(e) => setters.setFormData({...formData, role: e.target.value as TeacherRole})}
                         >
                            <option value="SUBJECT_TEACHER">Guru Mapel</option>
                            <option value="CLASS_TEACHER">Guru Kelas</option>
@@ -467,7 +389,7 @@ export const AdminPanel: React.FC<Props> = ({
                         <select
                            className="w-full border-slate-200 rounded-lg text-xs font-bold text-slate-900 focus:ring-2 focus:ring-primary focus:border-transparent bg-slate-50"
                            value={formData.level}
-                           onChange={(e) => setFormData({...formData, level: e.target.value as SchoolLevel})}
+                           onChange={(e) => setters.setFormData({...formData, level: e.target.value as SchoolLevel})}
                         >
                            <option value="SD">SD</option>
                            <option value="SMP">SMP</option>
@@ -476,27 +398,9 @@ export const AdminPanel: React.FC<Props> = ({
                         </select>
                      </div>
                   </div>
-                  
-                  {/* Reset Password Button (Only for Edit Mode) */}
-                  {editingUser && (
-                      <div className="mt-4 p-3 bg-slate-50 rounded border border-slate-200 text-center">
-                          <p className="text-xs text-slate-500 mb-2">Admin tidak bisa melihat password user.</p>
-                          <button 
-                            type="button"
-                            onClick={() => {
-                                const msg = `Halo, silakan reset password akun SiGuru Anda (${formData.email}) melalui halaman Login > Lupa Sandi.`;
-                                window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
-                            }}
-                            className="text-xs font-bold text-primary hover:underline flex items-center justify-center gap-1"
-                          >
-                             <span className="material-symbols-outlined text-xs">share</span>
-                             Kirim Instruksi Reset via WA
-                          </button>
-                      </div>
-                  )}
 
                   <div className="pt-4 flex gap-3">
-                     <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-3 border border-slate-200 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition-colors">Batal</button>
+                     <button type="button" onClick={() => setters.setIsModalOpen(false)} className="flex-1 py-3 border border-slate-200 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition-colors">Batal</button>
                      <button type="submit" className="flex-1 py-3 bg-primary text-white rounded-xl text-sm font-bold hover:bg-blue-600 shadow-lg shadow-blue-200 transition-colors">
                          {editingUser ? 'Update Data' : 'Buat User'}
                      </button>

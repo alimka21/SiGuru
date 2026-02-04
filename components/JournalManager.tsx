@@ -1,9 +1,7 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
-import ExcelJS from 'exceljs';
+import React from 'react';
 import { JournalEntry, LearningObjective, ScheduleItem, ClassInfo } from '../types';
-
-declare const Swal: any;
+import { useJournalLogic } from '../hooks/useJournalLogic';
 
 interface Props {
   journals: JournalEntry[];
@@ -15,250 +13,23 @@ interface Props {
   onBack: () => void;
 }
 
-export const JournalManager: React.FC<Props> = ({ 
-    journals, onUpdateJournals, tps, schedules, classes, initialContext, onBack 
-}) => {
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  
-  // FILTER STATES (Main View)
-  const [filterClass, setFilterClass] = useState<string>('');
-  const [filterSubject, setFilterSubject] = useState<string>('');
-  const [searchQuery, setSearchQuery] = useState('');
+export const JournalManager: React.FC<Props> = (props) => {
+  // Call Hook
+  const {
+    state,
+    setters,
+    computed,
+    handlers
+  } = useJournalLogic(props);
 
-  // Default Form Data
-  const [formData, setFormData] = useState<Omit<JournalEntry, 'id' | 'created_at'>>({
-      date: new Date().toISOString().split('T')[0],
-      className: '',
-      scheduleId: '',
-      subjectName: '', 
-      startTime: '',
-      endTime: '',
-      tpId: '',
-      lmId: '',
-      activity: '',
-      reflection: '',
-      followUp: ''
-  });
-
-  // --- DERIVED LISTS FOR FILTERS ---
-  const availableClasses = useMemo(() => {
-      return [...new Set(schedules.map(s => s.className))].sort();
-  }, [schedules]);
-
-  const availableSubjects = useMemo(() => {
-      return [...new Set(schedules.map(s => s.subject))].sort();
-  }, [schedules]);
-
-  // --- EFFECT: HANDLE CONTEXT NAVIGATION ---
-  useEffect(() => {
-    if (initialContext?.scheduleId && !isModalOpen) {
-        // Auto-open modal logic (existing)
-        const schedule = schedules.find(s => s.id === initialContext.scheduleId);
-        if (schedule) {
-            setFormData({
-                date: new Date().toISOString().split('T')[0],
-                className: schedule.className,
-                scheduleId: schedule.id,
-                subjectName: schedule.subject,
-                startTime: schedule.startTime,
-                endTime: schedule.endTime,
-                tpId: '',
-                lmId: '',
-                activity: '',
-                reflection: '',
-                followUp: ''
-            });
-            setIsModalOpen(true);
-        }
-    }
-    
-    // Auto-set filters if navigating from Dashboard
-    if (initialContext?.className) {
-        setFilterClass(initialContext.className);
-    }
-    if (initialContext?.scheduleId) {
-        const schedule = schedules.find(s => s.id === initialContext.scheduleId);
-        if(schedule) setFilterSubject(schedule.subject);
-    }
-
-  }, [initialContext, schedules]);
-
-  // Handle Schedule Selection in Form
-  const handleScheduleChange = (scheduleId: string) => {
-      const schedule = schedules.find(s => s.id === scheduleId);
-      if (schedule) {
-          setFormData(prev => ({
-              ...prev,
-              scheduleId: schedule.id,
-              className: schedule.className,
-              subjectName: schedule.subject,
-              startTime: schedule.startTime,
-              endTime: schedule.endTime
-          }));
-      } else {
-          setFormData(prev => ({ 
-              ...prev, 
-              scheduleId: '', 
-              className: '', 
-              subjectName: '',
-              startTime: '', 
-              endTime: '' 
-          }));
-      }
-  };
-
-  // --- MAIN FILTER LOGIC ---
-  const filteredJournals = useMemo(() => {
-      return journals.filter(j => {
-          const matchClass = filterClass ? j.className === filterClass : false;
-          const matchSubject = filterSubject ? j.subjectName === filterSubject : false;
-          
-          const query = searchQuery.toLowerCase();
-          const matchSearch = j.activity.toLowerCase().includes(query) || 
-                              j.reflection.toLowerCase().includes(query);
-
-          return matchClass && matchSubject && matchSearch;
-      }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [journals, filterClass, filterSubject, searchQuery]);
-
-  // Derived Options for Form
-  const activeTP = useMemo(() => tps.find(tp => tp.id === formData.tpId), [formData.tpId, tps]);
-  const availableLMs = activeTP ? activeTP.lms : [];
-
-  const handleExportExcel = async () => {
-    if (filteredJournals.length === 0) return;
-
-    const workbook = new ExcelJS.Workbook();
-    const sheet = workbook.addWorksheet('Jurnal Guru');
-
-    // Headers
-    const headerRow = sheet.addRow([
-        'No', 'Tanggal', 'Jam', 'Kelas', 'Mata Pelajaran', 
-        'Kode TP', 'Deskripsi Kegiatan', 'Refleksi Guru', 'Tindak Lanjut'
-    ]);
-
-    // Style Header
-    headerRow.eachCell((cell) => {
-        cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF137FEC' } };
-        cell.alignment = { horizontal: 'center', vertical: 'middle' };
-        cell.border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} };
-    });
-
-    // Data Rows
-    filteredJournals.forEach((j, index) => {
-        const tp = tps.find(t => t.id === j.tpId);
-        
-        const row = sheet.addRow([
-            index + 1,
-            new Date(j.date).toLocaleDateString('id-ID'),
-            `${j.startTime} - ${j.endTime}`,
-            j.className,
-            j.subjectName,
-            tp ? tp.code : '-',
-            j.activity,
-            j.reflection,
-            j.followUp
-        ]);
-
-        row.eachCell((cell) => {
-             cell.border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} };
-             cell.alignment = { vertical: 'top', wrapText: true };
-        });
-    });
-
-    // Column Widths
-    sheet.getColumn(2).width = 15; // Tanggal
-    sheet.getColumn(7).width = 40; // Aktivitas
-    sheet.getColumn(8).width = 30; // Refleksi
-    sheet.getColumn(9).width = 30; // Tindak Lanjut
-
-    // Download
-    const buffer = await workbook.xlsx.writeBuffer();
-    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    const url = window.URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = `Jurnal_${filterClass || 'Semua'}_${filterSubject || 'Semua'}.xlsx`;
-    anchor.click();
-    window.URL.revokeObjectURL(url);
-  };
-
-  const handleSave = (e: React.FormEvent) => {
-      e.preventDefault();
-
-      if (!formData.scheduleId) {
-          Swal.fire('Error', 'Wajib memilih Jadwal Mengajar.', 'error');
-          return;
-      }
-      if (!formData.date || !formData.className || !formData.tpId || !formData.activity) {
-          Swal.fire('Error', 'Tanggal, Kelas, TP, dan Kegiatan wajib diisi.', 'error');
-          return;
-      }
-
-      if (editingId) {
-          const updated = journals.map(j => j.id === editingId ? { ...j, ...formData } : j);
-          onUpdateJournals(updated);
-          Swal.fire('Berhasil', 'Jurnal berhasil diperbarui.', 'success');
-      } else {
-          const newEntry: JournalEntry = {
-              id: Date.now().toString(),
-              created_at: new Date().toISOString(),
-              ...formData
-          };
-          onUpdateJournals([newEntry, ...journals]);
-          Swal.fire('Berhasil', 'Jurnal baru berhasil disimpan.', 'success');
-      }
-      setIsModalOpen(false);
-      setEditingId(null);
-  };
-
-  const handleEdit = (journal: JournalEntry) => {
-      setEditingId(journal.id);
-      setFormData({ ...journal }); // Simplified spread since types match mostly
-      setIsModalOpen(true);
-  };
-
-  const handleDelete = (id: string) => {
-      Swal.fire({
-          title: 'Hapus Jurnal?',
-          text: "Data yang dihapus tidak dapat dikembalikan.",
-          icon: 'warning',
-          showCancelButton: true,
-          confirmButtonColor: '#d33',
-          confirmButtonText: 'Ya, Hapus'
-      }).then((result: any) => {
-          if (result.isConfirmed) {
-              onUpdateJournals(journals.filter(j => j.id !== id));
-              Swal.fire('Terhapus', 'Jurnal berhasil dihapus.', 'success');
-          }
-      });
-  };
-
-  const closeModal = () => {
-      setIsModalOpen(false);
-      setEditingId(null);
-      setFormData({
-          date: new Date().toISOString().split('T')[0],
-          className: '',
-          scheduleId: '',
-          subjectName: '',
-          startTime: '',
-          endTime: '',
-          tpId: '',
-          lmId: '',
-          activity: '',
-          reflection: '',
-          followUp: ''
-      });
-  };
+  const { isModalOpen, editingId, filterClass, filterSubject, searchQuery, formData } = state;
+  const { availableClasses, availableSubjects, filteredJournals, availableLMs } = computed;
 
   return (
     <div className="w-full max-w-7xl mx-auto pb-10">
        {/* Breadcrumbs */}
        <div className="flex items-center gap-2 mb-4 text-sm font-medium text-slate-500">
-        <a onClick={onBack} className="hover:text-primary cursor-pointer">Dashboard</a>
+        <a onClick={props.onBack} className="hover:text-primary cursor-pointer">Dashboard</a>
         <span className="material-symbols-outlined text-sm">chevron_right</span>
         <span className="text-slate-900 font-bold">Jurnal Guru</span>
       </div>
@@ -271,7 +42,7 @@ export const JournalManager: React.FC<Props> = ({
         </div>
         <div className="flex gap-3">
              <button 
-                onClick={handleExportExcel}
+                onClick={handlers.handleExportExcel}
                 disabled={filteredJournals.length === 0}
                 className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-bold hover:bg-green-700 transition-colors shadow-lg shadow-green-200 disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -279,7 +50,7 @@ export const JournalManager: React.FC<Props> = ({
                 Export Excel
             </button>
             <button 
-                onClick={() => setIsModalOpen(true)}
+                onClick={() => setters.setIsModalOpen(true)}
                 className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg text-sm font-bold hover:bg-blue-600 transition-colors shadow-lg shadow-blue-200"
             >
                 <span className="material-symbols-outlined text-sm">edit_square</span>
@@ -297,7 +68,7 @@ export const JournalManager: React.FC<Props> = ({
                 <div className="relative">
                     <select 
                         value={filterClass} 
-                        onChange={(e) => setFilterClass(e.target.value)}
+                        onChange={(e) => setters.setFilterClass(e.target.value)}
                         className="w-full rounded-lg border-slate-200 text-sm font-bold text-slate-900 focus:ring-primary focus:border-primary pl-10 appearance-none bg-slate-50"
                     >
                         <option value="">-- Semua Kelas --</option>
@@ -316,7 +87,7 @@ export const JournalManager: React.FC<Props> = ({
                 <div className="relative">
                     <select 
                         value={filterSubject} 
-                        onChange={(e) => setFilterSubject(e.target.value)}
+                        onChange={(e) => setters.setFilterSubject(e.target.value)}
                         className="w-full rounded-lg border-slate-200 text-sm font-bold text-slate-900 focus:ring-primary focus:border-primary pl-10 appearance-none bg-slate-50"
                     >
                         <option value="">-- Semua Mapel --</option>
@@ -338,7 +109,7 @@ export const JournalManager: React.FC<Props> = ({
                     type="text" 
                     placeholder="Cari topik kegiatan..." 
                     value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onChange={(e) => setters.setSearchQuery(e.target.value)}
                     className="pl-10 pr-4 py-2.5 border border-slate-200 rounded-lg text-sm font-bold text-slate-900 w-full md:w-64 focus:ring-2 focus:ring-primary outline-none" 
                  />
              </div>
@@ -370,7 +141,7 @@ export const JournalManager: React.FC<Props> = ({
 
                 {filteredJournals.length > 0 ? (
                     filteredJournals.map(journal => {
-                        const tp = tps.find(t => t.id === journal.tpId);
+                        const tp = props.tps.find(t => t.id === journal.tpId);
                         const lm = tp?.lms.find(l => l.id === journal.lmId);
                         
                         return (
@@ -397,8 +168,8 @@ export const JournalManager: React.FC<Props> = ({
                                         </div>
                                     </div>
                                     <div className="flex gap-2">
-                                        <button onClick={() => handleEdit(journal)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"><span className="material-symbols-outlined">edit</span></button>
-                                        <button onClick={() => handleDelete(journal.id)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg"><span className="material-symbols-outlined">delete</span></button>
+                                        <button onClick={() => handlers.handleEdit(journal)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"><span className="material-symbols-outlined">edit</span></button>
+                                        <button onClick={() => handlers.handleDelete(journal.id)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg"><span className="material-symbols-outlined">delete</span></button>
                                     </div>
                                 </div>
 
@@ -432,26 +203,26 @@ export const JournalManager: React.FC<Props> = ({
                     <div className="flex flex-col items-center justify-center py-12 bg-slate-50 border border-dashed border-slate-300 rounded-xl text-slate-400">
                         <span className="material-symbols-outlined text-4xl mb-2">auto_stories</span>
                         <p className="text-sm font-medium">Belum ada jurnal untuk filter ini.</p>
-                        <button onClick={() => setIsModalOpen(true)} className="mt-2 text-primary font-bold hover:underline text-sm">Buat Jurnal Baru</button>
+                        <button onClick={() => setters.setIsModalOpen(true)} className="mt-2 text-primary font-bold hover:underline text-sm">Buat Jurnal Baru</button>
                     </div>
                 )}
               </>
           )}
       </div>
 
-      {/* MODAL FORM (REUSED FROM PREVIOUS STEP) */}
+      {/* MODAL FORM */}
       {isModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 overflow-y-auto">
               <div className="bg-white rounded-2xl w-full max-w-3xl shadow-2xl my-8">
                   <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50 rounded-t-2xl sticky top-0">
                       <h3 className="text-xl font-bold text-slate-900">{editingId ? 'Edit Jurnal' : 'Tambah Jurnal Baru'}</h3>
-                      <button onClick={closeModal} className="text-slate-400 hover:text-red-500 transition-colors">
+                      <button onClick={handlers.closeModal} className="text-slate-400 hover:text-red-500 transition-colors">
                           <span className="material-symbols-outlined">close</span>
                       </button>
                   </div>
                   
-                  <form onSubmit={handleSave} className="p-6 space-y-6">
-                       {/* Form Fields (Same as previous turn) */}
+                  <form onSubmit={handlers.handleSave} className="p-6 space-y-6">
+                       {/* Form Fields */}
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div className="space-y-1">
                               <label className="text-xs font-bold text-slate-500 uppercase">Tanggal</label>
@@ -459,7 +230,7 @@ export const JournalManager: React.FC<Props> = ({
                                 type="date" required 
                                 className="w-full rounded-lg border-slate-200 text-sm font-bold text-slate-900 focus:ring-primary"
                                 value={formData.date}
-                                onChange={e => setFormData({...formData, date: e.target.value})}
+                                onChange={e => setters.setFormData({...formData, date: e.target.value})}
                               />
                           </div>
                           <div className="space-y-1">
@@ -468,10 +239,10 @@ export const JournalManager: React.FC<Props> = ({
                                 required
                                 className="w-full rounded-lg border-slate-200 text-sm font-bold text-slate-900 focus:ring-primary"
                                 value={formData.scheduleId}
-                                onChange={e => handleScheduleChange(e.target.value)}
+                                onChange={e => handlers.handleScheduleChange(e.target.value)}
                               >
                                   <option value="">-- Pilih Jadwal (Wajib) --</option>
-                                  {schedules.map(s => (
+                                  {props.schedules.map(s => (
                                       <option key={s.id} value={s.id}>{s.day} {s.startTime}-{s.endTime} | {s.className} | {s.subject}</option>
                                   ))}
                               </select>
@@ -514,10 +285,10 @@ export const JournalManager: React.FC<Props> = ({
                                     required
                                     className="w-full rounded-lg border-slate-200 text-sm font-bold text-slate-900 focus:ring-primary"
                                     value={formData.tpId}
-                                    onChange={e => setFormData({...formData, tpId: e.target.value, lmId: ''})}
+                                    onChange={e => setters.setFormData({...formData, tpId: e.target.value, lmId: ''})}
                                 >
                                     <option value="">-- Pilih TP --</option>
-                                    {tps.map(tp => (
+                                    {props.tps.map(tp => (
                                         <option key={tp.id} value={tp.id}>{tp.code} - {tp.description}</option>
                                     ))}
                                 </select>
@@ -527,7 +298,7 @@ export const JournalManager: React.FC<Props> = ({
                                 <select 
                                     className="w-full rounded-lg border-slate-200 text-sm font-bold text-slate-900 focus:ring-primary"
                                     value={formData.lmId}
-                                    onChange={e => setFormData({...formData, lmId: e.target.value})}
+                                    onChange={e => setters.setFormData({...formData, lmId: e.target.value})}
                                     disabled={!formData.tpId}
                                 >
                                     <option value="">-- Pilih Materi (Opsional) --</option>
@@ -545,7 +316,7 @@ export const JournalManager: React.FC<Props> = ({
                              className="w-full rounded-lg border-slate-200 text-sm text-slate-900 focus:ring-primary"
                              placeholder="Deskripsikan aktivitas yang dilakukan..."
                              value={formData.activity}
-                             onChange={e => setFormData({...formData, activity: e.target.value})}
+                             onChange={e => setters.setFormData({...formData, activity: e.target.value})}
                           />
                       </div>
 
@@ -557,7 +328,7 @@ export const JournalManager: React.FC<Props> = ({
                                 className="w-full rounded-lg border-slate-200 text-sm text-slate-900 focus:ring-primary"
                                 placeholder="Apa yang berhasil? Apa yang perlu diperbaiki?"
                                 value={formData.reflection}
-                                onChange={e => setFormData({...formData, reflection: e.target.value})}
+                                onChange={e => setters.setFormData({...formData, reflection: e.target.value})}
                                 />
                           </div>
                           <div className="space-y-1">
@@ -567,13 +338,13 @@ export const JournalManager: React.FC<Props> = ({
                                 className="w-full rounded-lg border-slate-200 text-sm text-slate-900 focus:ring-primary"
                                 placeholder="Rencana pertemuan selanjutnya..."
                                 value={formData.followUp}
-                                onChange={e => setFormData({...formData, followUp: e.target.value})}
+                                onChange={e => setters.setFormData({...formData, followUp: e.target.value})}
                                 />
                           </div>
                       </div>
 
                       <div className="pt-4 flex gap-3 border-t border-slate-100">
-                          <button type="button" onClick={closeModal} className="flex-1 py-3 border border-slate-200 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-50">Batal</button>
+                          <button type="button" onClick={handlers.closeModal} className="flex-1 py-3 border border-slate-200 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-50">Batal</button>
                           <button type="submit" className="flex-1 py-3 bg-primary text-white rounded-xl text-sm font-bold hover:bg-blue-600 shadow-lg shadow-blue-200">Simpan Jurnal</button>
                       </div>
                   </form>
