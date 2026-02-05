@@ -1,7 +1,9 @@
 
-import React from 'react';
-import { TabView, IdentityData, ScheduleItem, ClassInfo, Student, AttendanceData, GradeData, Subject, LearningObjective } from '../types';
+import React, { useState, useEffect, useMemo } from 'react';
+import { TabView, IdentityData, ScheduleItem, ClassInfo, Student, AttendanceData, GradeData, Subject, LearningObjective, TeacherRole, SchoolLevel } from '../types';
 import { useDashboardLogic } from '../hooks/useDashboardLogic';
+
+declare const Swal: any;
 
 interface Props {
   onNavigate: (tab: TabView, context?: { className?: string, scheduleId?: string }) => void;
@@ -13,7 +15,23 @@ interface Props {
   gradeData: GradeData;
   subject: Subject;
   tps: LearningObjective[];
+  // Callback untuk menyimpan identity dari modal dashboard
+  onSaveIdentity?: (data: IdentityData) => void;
 }
+
+// --- DATA REFERENSI MAPEL ---
+const SUBJECTS_SD = [
+    'Bahasa Indonesia', 'Matematika', 'IPAS', 'Pendidikan Pancasila', 
+    'Seni Budaya', 'PJOK', 'Bahasa Inggris', 'Muatan Lokal', 'PAI', 'PAK'
+];
+
+const SUBJECTS_SECONDARY = [
+    'Matematika', 'Bahasa Indonesia', 'Bahasa Inggris', 'Pendidikan Pancasila',
+    'Informatika', 'IPA', 'IPS', 'PJOK', 'Seni Budaya', 
+    'Fisika', 'Kimia', 'Biologi', 
+    'Sejarah', 'Geografi', 'Ekonomi', 'Sosiologi',
+    'PAI', 'PAK', 'BK'
+];
 
 const StatCard = ({ title, value, subText, subColor, icon, bgIcon }: any) => (
   <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm flex flex-col gap-2 relative overflow-hidden transition-all hover:shadow-md group">
@@ -34,39 +52,23 @@ const StatCard = ({ title, value, subText, subColor, icon, bgIcon }: any) => (
   </div>
 );
 
-interface ScheduleCardProps {
-    id: string;
-    startTime: string;
-    endTime: string;
-    className: string;
-    subject: string;
-    room: string;
-    currentTime: Date;
-    onNavigate: (tab: TabView, context?: { className?: string, scheduleId?: string }) => void;
-}
-
-const ScheduleCard: React.FC<ScheduleCardProps> = ({ id, startTime, endTime, className, subject, room, currentTime, onNavigate }) => {
-    // Logic to determine if class is live
+// ... ScheduleCard Component (Sama seperti sebelumnya, tidak diubah) ...
+const ScheduleCard: React.FC<any> = ({ id, startTime, endTime, className, subject, room, currentTime, onNavigate }) => {
     const isLive = () => {
         const [startH, startM] = startTime.split(':').map(Number);
         const [endH, endM] = endTime.split(':').map(Number);
-        
         const start = new Date(currentTime);
         start.setHours(startH, startM, 0);
-        
         const end = new Date(currentTime);
         end.setHours(endH, endM, 0);
-
         return currentTime >= start && currentTime <= end;
     };
-
     const isFinished = () => {
          const [endH, endM] = endTime.split(':').map(Number);
          const end = new Date(currentTime);
          end.setHours(endH, endM, 0);
          return currentTime > end;
     }
-
     const liveStatus = isLive();
     const finishedStatus = isFinished();
 
@@ -76,7 +78,7 @@ const ScheduleCard: React.FC<ScheduleCardProps> = ({ id, startTime, endTime, cla
                 <div className="absolute top-0 right-0 animate-pulse">
                     <div className="bg-primary text-white text-[10px] font-bold px-3 py-1 rounded-bl-lg flex items-center gap-1">
                         <span className="material-symbols-outlined text--[10px]">sensors</span>
-                        SEDANG BERLANGSUNG
+                        LIVE
                     </div>
                 </div>
             )}
@@ -127,8 +129,175 @@ export const Dashboard: React.FC<Props> = (props) => {
   const { currentTime } = state;
   const { dateString, todaysSchedules, averageGrade, attendanceStats } = computed;
 
+  // --- ONBOARDING LOGIC ---
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [setupData, setSetupData] = useState<IdentityData>(props.identity);
+
+  // List Mapel Dinamis berdasarkan Jenjang
+  const availableSubjects = useMemo(() => {
+      return setupData.level === 'SD' ? SUBJECTS_SD : SUBJECTS_SECONDARY;
+  }, [setupData.level]);
+
+  useEffect(() => {
+      // Cek apakah data identitas sudah "properly set"
+      // Kriteria: Nama Sekolah tidak default, dan Mapel/Kelas terisi sesuai role
+      const isSchoolSet = props.identity.schoolName && props.identity.schoolName !== 'Nama Sekolah';
+      const isContextSet = props.identity.role === 'CLASS_TEACHER' 
+          ? (props.identity.className && props.identity.className !== '')
+          : (props.identity.subjectName && props.identity.subjectName !== 'Mata Pelajaran' && props.identity.subjectName !== '');
+      
+      if (!isSchoolSet || !isContextSet) {
+          setShowOnboarding(true);
+      }
+  }, [props.identity]);
+
+  const handleRoleChange = (role: TeacherRole) => {
+      setSetupData(prev => ({
+          ...prev,
+          role,
+          level: role === 'CLASS_TEACHER' ? 'SD' : 'SMP' // Default switch
+      }));
+  };
+
+  const handleFinishOnboarding = (e: React.FormEvent) => {
+      e.preventDefault();
+      if (props.onSaveIdentity) {
+          props.onSaveIdentity(setupData);
+          setShowOnboarding(false);
+          // Show Success Swal
+          Swal.fire({
+              title: 'Profil Tersimpan!',
+              text: 'Data awal Anda berhasil disimpan. Selamat bekerja!',
+              icon: 'success',
+              timer: 2000,
+              showConfirmButton: false
+          });
+      }
+  };
+
   return (
-    <div className="w-full max-w-7xl mx-auto space-y-8">
+    <div className="w-full max-w-7xl mx-auto space-y-8 relative">
+      
+      {/* --- ONBOARDING MODAL OVERLAY --- */}
+      {showOnboarding && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in-95 duration-300">
+                  <div className="bg-gradient-to-r from-primary to-blue-600 p-8 text-white">
+                      <div className="flex items-center gap-4 mb-4">
+                          <div className="bg-white/20 p-3 rounded-xl backdrop-blur-md">
+                              <span className="material-symbols-outlined text-3xl">settings_account_box</span>
+                          </div>
+                          <div>
+                              <h2 className="text-2xl font-bold">Selamat Datang di SiGuru!</h2>
+                              <p className="text-blue-100 text-sm">Mohon lengkapi profil Anda untuk memulai.</p>
+                          </div>
+                      </div>
+                  </div>
+                  
+                  <form onSubmit={handleFinishOnboarding} className="p-8 space-y-6">
+                      {/* 1. Sekolah & Jenjang */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <div className="space-y-2">
+                              <label className="text-sm font-bold text-slate-700">Nama Sekolah</label>
+                              <input 
+                                  type="text" required
+                                  className="w-full border-slate-300 rounded-lg text-sm font-bold text-slate-900 focus:ring-primary placeholder:text-slate-400"
+                                  placeholder="Contoh: SMA Negeri 1..."
+                                  value={setupData.schoolName === 'Nama Sekolah' ? '' : setupData.schoolName}
+                                  onChange={e => setSetupData({...setupData, schoolName: e.target.value})}
+                              />
+                          </div>
+                          <div className="space-y-2">
+                              <label className="text-sm font-bold text-slate-700">Jenjang Sekolah</label>
+                              <select 
+                                  className="w-full border-slate-300 rounded-lg text-sm font-bold text-slate-900 focus:ring-primary cursor-pointer"
+                                  value={setupData.level}
+                                  onChange={e => setSetupData({...setupData, level: e.target.value as SchoolLevel})}
+                                  disabled={setupData.role === 'CLASS_TEACHER'} // SD Only for Class Teacher
+                              >
+                                  <option value="SD">SD/MI</option>
+                                  <option value="SMP">SMP/MTs</option>
+                                  <option value="SMA">SMA/MA</option>
+                                  <option value="SMK">SMK</option>
+                              </select>
+                          </div>
+                      </div>
+
+                      <div className="border-t border-slate-100 my-4"></div>
+
+                      {/* 2. Role & Context */}
+                      <div className="space-y-4">
+                          <label className="text-sm font-bold text-slate-700">Peran Guru</label>
+                          <div className="grid grid-cols-2 gap-4">
+                              <div 
+                                  onClick={() => handleRoleChange('SUBJECT_TEACHER')}
+                                  className={`cursor-pointer border-2 rounded-xl p-4 flex flex-col gap-1 transition-all ${setupData.role === 'SUBJECT_TEACHER' ? 'border-primary bg-blue-50' : 'border-slate-100 hover:border-slate-300'}`}
+                              >
+                                  <div className="flex items-center gap-2 font-bold text-slate-800">
+                                      <span className="material-symbols-outlined text-primary">menu_book</span>
+                                      Guru Mapel
+                                  </div>
+                                  <p className="text-xs text-slate-500">Mengajar 1 mapel di banyak kelas (SMP/SMA).</p>
+                              </div>
+                              <div 
+                                  onClick={() => handleRoleChange('CLASS_TEACHER')}
+                                  className={`cursor-pointer border-2 rounded-xl p-4 flex flex-col gap-1 transition-all ${setupData.role === 'CLASS_TEACHER' ? 'border-primary bg-blue-50' : 'border-slate-100 hover:border-slate-300'}`}
+                              >
+                                  <div className="flex items-center gap-2 font-bold text-slate-800">
+                                      <span className="material-symbols-outlined text-orange-500">meeting_room</span>
+                                      Guru Kelas
+                                  </div>
+                                  <p className="text-xs text-slate-500">Wali kelas / Guru Tematik (Khusus SD).</p>
+                              </div>
+                          </div>
+                      </div>
+
+                      {/* 3. Conditional Input */}
+                      <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                          {setupData.role === 'SUBJECT_TEACHER' ? (
+                              <div className="space-y-2">
+                                  <label className="text-sm font-bold text-slate-700">Mata Pelajaran yang Diampu</label>
+                                  <div className="relative">
+                                    <select 
+                                        required
+                                        className="w-full border-slate-300 rounded-lg text-sm font-bold text-slate-900 focus:ring-primary cursor-pointer appearance-none pl-4 pr-10"
+                                        value={setupData.subjectName === 'Mata Pelajaran' ? '' : setupData.subjectName}
+                                        onChange={e => setSetupData({...setupData, subjectName: e.target.value})}
+                                    >
+                                        <option value="">-- Pilih Mata Pelajaran --</option>
+                                        {availableSubjects.map((subj) => (
+                                            <option key={subj} value={subj}>{subj}</option>
+                                        ))}
+                                    </select>
+                                    <span className="material-symbols-outlined absolute right-3 top-2.5 text-slate-500 pointer-events-none text-lg">expand_more</span>
+                                  </div>
+                                  <p className="text-[10px] text-slate-500">Pilih mapel utama yang Anda ajarkan.</p>
+                              </div>
+                          ) : (
+                              <div className="space-y-2">
+                                  <label className="text-sm font-bold text-slate-700">Nama Kelas Ampuan</label>
+                                  <input 
+                                      type="text" required
+                                      className="w-full border-slate-300 rounded-lg text-sm font-bold text-slate-900 focus:ring-primary placeholder:text-slate-400"
+                                      placeholder="Contoh: Kelas 4-B"
+                                      value={setupData.className}
+                                      onChange={e => setSetupData({...setupData, className: e.target.value})}
+                                  />
+                              </div>
+                          )}
+                      </div>
+
+                      <button 
+                          type="submit"
+                          className="w-full py-4 bg-primary text-white rounded-xl font-bold text-lg hover:bg-blue-600 shadow-lg shadow-blue-200 transition-all active:scale-95"
+                      >
+                          Simpan & Mulai
+                      </button>
+                  </form>
+              </div>
+          </div>
+      )}
+
       
       {/* Hero Header Banner */}
       <div className="bg-white rounded-2xl p-8 border border-slate-200 shadow-sm relative overflow-hidden">
@@ -167,7 +336,7 @@ export const Dashboard: React.FC<Props> = (props) => {
                             {props.identity.role === 'CLASS_TEACHER' ? 'meeting_room' : 'menu_book'}
                         </span>
                         {props.identity.role === 'CLASS_TEACHER' 
-                            ? 'Guru Kelas' 
+                            ? `Wali ${props.identity.className || 'Kelas'}` 
                             : `Guru Mapel ${props.identity.subjectName}`
                         }
                      </div>

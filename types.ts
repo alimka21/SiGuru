@@ -74,6 +74,7 @@ export interface LearningObjective {
   semester?: 1 | 2; 
   scopeId?: string; // ID Fase atau Kelas (misal: 'Fase E', 'Kelas 1')
   subjectId?: string; // ID Mata Pelajaran (misal: 'Matematika', 'IPA')
+  scope?: string; // NEW: Nama Lingkup Materi (e.g., "Aljabar", "Geometri")
   lms: LearningMaterial[]; 
   criteria: AssessmentCriteria[]; 
 }
@@ -101,16 +102,22 @@ export interface JournalEntry {
   created_at: string;
 }
 
+// UPDATED GRADE DATA STRUCTURE
 export interface GradeData {
   [studentId: string]: {
-    scores: { [criteriaId: string]: number }; 
+    // Formative: Checkbox based (Tercapai/Belum) per Criteria ID
+    formative: { [criteriaId: string]: boolean }; 
+    // Summative: Score based (0-100) per Lingkup Materi (Scope Name)
+    summative: { [scopeName: string]: number };
+    // Legacy support / Direct criteria scoring (optional, kept for transition)
+    scores?: { [criteriaId: string]: number }; 
     attitude: number; 
   };
 }
 
 export interface CalculatedGrade {
-  avgFormative: number; // Added breakdown
-  avgSummative: number; // Added breakdown
+  avgFormative: number; // Percentage of criteria achieved
+  avgSummative: number; // Average of scope scores
   finalScore: number;
   isPassed: boolean;
 }

@@ -9,13 +9,24 @@ interface MainLayoutProps {
   onLogout: () => void;
 }
 
-const NavItem = ({ to, label, icon, collapsed }: any) => {
+// Updated NavItem to accept 'state' prop for routing context
+const NavItem = ({ to, label, icon, collapsed, state }: any) => {
   const location = useLocation();
-  const isActive = location.pathname === to;
+  // Check if active based on path AND state (if provided)
+  let isActive = location.pathname === to;
+  
+  // Special check for grading tabs to highlight correct sidebar item
+  if (isActive && state?.initialTab) {
+      const currentState = location.state as any;
+      if (currentState?.initialTab !== state.initialTab) {
+          isActive = false;
+      }
+  }
 
   return (
     <Link
       to={to}
+      state={state} // Pass state here
       title={collapsed ? label : undefined}
       className={`flex items-center gap-3 py-2.5 rounded-lg transition-all duration-200 
         ${isActive ? 'bg-primary text-white shadow-md' : 'text-slate-600 hover:bg-slate-100'}
@@ -90,9 +101,21 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ identity, currentUser, o
             {!isSidebarCollapsed ? <p className="px-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 mt-2">Akademik</p> : <div className="h-4"></div>}
 
             <NavItem collapsed={isSidebarCollapsed} to="/akademik/journal" label="Jurnal Guru" icon="edit_note" />
-            <NavItem collapsed={isSidebarCollapsed} to="/akademik/grading" label="Input Nilai" icon="assignment_turned_in" />
-            <NavItem collapsed={isSidebarCollapsed} to="/recap/grades" label="Rekap Nilai" icon="grade" />
+            
+            {/* UPDATED GRADING MENU */}
+            <NavItem 
+                collapsed={isSidebarCollapsed} 
+                to="/akademik/grading" 
+                label="Asesmen / Nilai" 
+                icon="equalizer" 
+            />
+
             <NavItem collapsed={isSidebarCollapsed} to="/akademik/attendance" label="Presensi" icon="how_to_reg" />
+            
+            <div className="my-2 border-t border-slate-100"></div>
+            {!isSidebarCollapsed ? <p className="px-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 mt-2">Laporan</p> : <div className="h-4"></div>}
+            
+            <NavItem collapsed={isSidebarCollapsed} to="/recap/grades" label="Rekap Nilai" icon="grade" />
             <NavItem collapsed={isSidebarCollapsed} to="/recap/attendance" label="Rekap Presensi" icon="fact_check" />
             
             <div className="my-2 border-t border-slate-100"></div>

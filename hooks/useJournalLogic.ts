@@ -218,6 +218,14 @@ export const useJournalLogic = ({
     anchor.download = `Jurnal_${filterClass || 'Semua'}_${filterSubject || 'Semua'}.xlsx`;
     anchor.click();
     window.URL.revokeObjectURL(url);
+
+    Swal.fire({
+        title: 'Export Berhasil!',
+        text: 'Jurnal Mengajar telah berhasil diunduh.',
+        icon: 'success',
+        timer: 2000,
+        showConfirmButton: false
+    });
   };
 
   const closeModal = () => {

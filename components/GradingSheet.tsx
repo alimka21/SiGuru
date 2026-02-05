@@ -1,6 +1,6 @@
 
-import React from 'react';
-import { Student, LearningObjective, GradeData, Subject } from '../types';
+import React, { useMemo } from 'react';
+import { Student, LearningObjective, GradeData, Subject, IdentityData } from '../types';
 import { calculateStudentGrade } from '../utils/grading';
 import { useGradingLogic } from '../hooks/useGradingLogic';
 
@@ -11,57 +11,97 @@ interface Props {
   initialClass?: string;
   globalGradeData: GradeData;
   setGlobalGradeData: React.Dispatch<React.SetStateAction<GradeData>>;
+  // Identity diperlukan untuk menentukan opsi mata pelajaran (SD vs SMP/SMA)
+  identity?: IdentityData; 
 }
 
-// Mock Subjects for the Dropdown (Simulating multiple subjects)
-const AVAILABLE_SUBJECTS = [
-    { id: 's1', name: 'Matematika - Fase E' },
-    { id: 's2', name: 'Fisika - Fase E' },
-    { id: 's3', name: 'Kimia - Fase E' },
+// Daftar Mapel SD (Guru Kelas)
+const SD_SUBJECTS = [
+    { id: 'Bahasa Indonesia', name: 'Bahasa Indonesia' },
+    { id: 'Matematika', name: 'Matematika' },
+    { id: 'IPAS', name: 'Ilmu Pengetahuan Alam dan Sosial (IPAS)' },
+    { id: 'Pendidikan Pancasila', name: 'Pendidikan Pancasila' },
+    { id: 'Seni Budaya', name: 'Seni Budaya' },
+    { id: 'PJOK', name: 'PJOK' },
+    { id: 'Bahasa Inggris', name: 'Bahasa Inggris' },
+    { id: 'Muatan Lokal', name: 'Muatan Lokal' }
+];
+
+// Daftar Mapel SMP/SMA (Guru Mapel)
+const SECONDARY_SUBJECTS = [
+    { id: 's1', name: 'Matematika' },
+    { id: 's2', name: 'Fisika' },
+    { id: 's3', name: 'Kimia' },
+    { id: 's4', name: 'Biologi' },
+    { id: 's5', name: 'Bahasa Indonesia' },
+    { id: 's6', name: 'Bahasa Inggris' },
+    { id: 's7', name: 'Sejarah' },
+    { id: 's8', name: 'Geografi' },
+    { id: 's9', name: 'Sosiologi' },
+    { id: 's10', name: 'Ekonomi' },
 ];
 
 export const GradingSheet: React.FC<Props> = (props) => {
+  // Default Identity Fallback
+  const safeIdentity = props.identity || { role: 'SUBJECT_TEACHER', level: 'SMA', schoolName: '', teacherName: '', nip: '', subjectName: '', semester: '', academicYear: '', className: '', studentCount: 0 };
+
   const { 
     state, 
     setters, 
     computed, 
     handlers 
-  } = useGradingLogic(props);
+  } = useGradingLogic({ ...props, identity: safeIdentity });
 
-  const { errorMap, currentTime, showConfig, tempWeights, selectedClass, selectedSubject } = state;
-  const { availableClasses, filteredStudents, stats } = computed;
+  const { selectedClass, selectedSubject, activeTab } = state;
+  const { availableClasses, filteredStudents, uniqueScopes, tpsByScope, stats, filteredTPs } = computed;
+
+  // Determine Subject Options based on Level/Role
+  const subjectOptions = useMemo(() => {
+      if (safeIdentity.level === 'SD' || safeIdentity.role === 'CLASS_TEACHER') {
+          return SD_SUBJECTS;
+      }
+      return SECONDARY_SUBJECTS;
+  }, [safeIdentity.level, safeIdentity.role]);
 
   return (
-    <div className="max-w-[1440px] mx-auto pb-8 relative">
-      {/* Breadcrumbs */}
-      <div className="flex items-center gap-2 mb-4 text-sm font-medium text-slate-500">
-        <a className="hover:text-primary cursor-pointer">Dashboard</a>
-        <span className="material-symbols-outlined text-sm">chevron_right</span>
-        <a className="hover:text-primary cursor-pointer">Input Nilai</a>
-        <span className="material-symbols-outlined text-sm">chevron_right</span>
-        <span className="text-slate-900 font-bold">{props.subject.name}</span>
-      </div>
+    <div className="max-w-[1600px] mx-auto pb-10 relative">
+      {/* Header Section */}
+      <div className="flex flex-col gap-6 mb-4">
+          {/* Breadcrumbs */}
+          <div className="flex items-center gap-2 text-sm font-medium text-slate-500">
+            <span className="material-symbols-outlined text-sm">home</span>
+            <span className="material-symbols-outlined text-sm">chevron_right</span>
+            <span>Akademik</span>
+            <span className="material-symbols-outlined text-sm">chevron_right</span>
+            <span className={`font-bold ${activeTab === 'FORMATIVE' ? 'text-blue-600' : 'text-purple-600'}`}>
+                Asesmen / Nilai
+            </span>
+          </div>
 
-      {/* Header */}
-      <div className="flex flex-wrap justify-between items-end gap-4 mb-6">
-        <div className="flex flex-col gap-1">
-          <h1 className="text-slate-900 text-3xl font-extrabold tracking-tight">Input Nilai Siswa</h1>
-          <p className="text-slate-500">Pilih Kelas dan Mata Pelajaran untuk mulai mengisi nilai.</p>
-        </div>
-      </div>
-
-      {/* Toolbar / Filter Section */}
-      <div className="bg-white border border-slate-200 rounded-t-xl p-4 flex flex-col md:flex-row gap-4 justify-between items-start md:items-center shadow-sm z-20 relative">
-        <div className="flex flex-col md:flex-row gap-4 items-center w-full md:w-auto">
-             
-             {/* Class Filter Dropdown */}
-             <div className="relative w-full md:w-56">
-                <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Kelas</label>
-                <div className="relative">
+          <div className="flex flex-col md:flex-row justify-between items-end gap-4">
+            <div>
+              <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+                  <span className={`material-symbols-outlined text-3xl ${activeTab === 'FORMATIVE' ? 'text-blue-600' : 'text-purple-600'}`}>
+                      {activeTab === 'FORMATIVE' ? 'checklist' : 'equalizer'}
+                  </span>
+                  {activeTab === 'FORMATIVE' ? 'Asesmen Formatif' : 'Asesmen Sumatif'}
+              </h1>
+              <p className="text-slate-500 mt-1">
+                  {activeTab === 'FORMATIVE' 
+                    ? 'Ceklis observasi ketercapaian tujuan pembelajaran (Proses).'
+                    : 'Input nilai angka per lingkup materi (Hasil).'
+                  }
+              </p>
+            </div>
+            
+            {/* Class & Subject Selector Toolbar */}
+            <div className={`flex flex-wrap gap-3 p-2 rounded-xl border shadow-sm transition-colors duration-300 ${activeTab === 'FORMATIVE' ? 'bg-blue-50 border-blue-200' : 'bg-purple-50 border-purple-200'}`}>
+                 {/* Class Selector */}
+                 <div className="relative min-w-[200px]">
                     <select 
                         value={selectedClass} 
                         onChange={(e) => setters.setSelectedClass(e.target.value)}
-                        className="w-full appearance-none pl-10 pr-8 py-2.5 border border-slate-200 rounded-lg text-sm font-bold text-slate-900 bg-slate-50 hover:bg-white focus:ring-2 focus:ring-primary focus:border-transparent outline-none cursor-pointer transition-all"
+                        className="w-full appearance-none pl-10 pr-8 py-2.5 border-transparent rounded-lg text-sm font-bold text-slate-900 bg-white hover:bg-white/80 focus:ring-2 focus:ring-primary transition-all cursor-pointer shadow-sm"
                     >
                         <option value="">-- Pilih Kelas --</option>
                         {availableClasses.map(cls => (
@@ -71,18 +111,15 @@ export const GradingSheet: React.FC<Props> = (props) => {
                     <span className="material-symbols-outlined absolute left-3 top-2.5 text-slate-500 pointer-events-none text-lg">school</span>
                     <span className="material-symbols-outlined absolute right-2 top-3 text-slate-400 pointer-events-none text-sm">expand_more</span>
                 </div>
-            </div>
 
-            {/* Subject Filter Dropdown */}
-            <div className="relative w-full md:w-64">
-                <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Mata Pelajaran</label>
-                <div className="relative">
+                {/* Subject Selector */}
+                <div className="relative min-w-[220px]">
                     <select 
                         value={selectedSubject} 
                         onChange={(e) => setters.setSelectedSubject(e.target.value)}
-                        className="w-full appearance-none pl-10 pr-8 py-2.5 border border-slate-200 rounded-lg text-sm font-bold text-slate-900 bg-slate-50 hover:bg-white focus:ring-2 focus:ring-primary focus:border-transparent outline-none cursor-pointer transition-all"
+                        className="w-full appearance-none pl-10 pr-8 py-2.5 border-transparent rounded-lg text-sm font-bold text-slate-900 bg-white hover:bg-white/80 focus:ring-2 focus:ring-primary transition-all cursor-pointer shadow-sm"
                     >
-                        {AVAILABLE_SUBJECTS.map(subj => (
+                        {subjectOptions.map(subj => (
                             <option key={subj.id} value={subj.id}>{subj.name}</option>
                         ))}
                     </select>
@@ -90,229 +127,307 @@ export const GradingSheet: React.FC<Props> = (props) => {
                     <span className="material-symbols-outlined absolute right-2 top-3 text-slate-400 pointer-events-none text-sm">expand_more</span>
                 </div>
             </div>
-        </div>
-
-        <div className="flex items-center gap-3">
-             <div className="px-3 py-1 bg-slate-100 rounded border border-slate-200 flex flex-col">
-                <span className="text-[10px] font-bold text-slate-400 uppercase">KKTP</span>
-                <span className="text-sm font-bold text-slate-900">{props.subject.kktp}</span>
-             </div>
-             <button 
-                onClick={() => setters.setShowConfig(true)}
-                className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold hover:bg-slate-50 transition-colors text-slate-700 shadow-sm"
-             >
-                <span className="material-symbols-outlined text-sm text-primary">settings</span>
-                Parameter
-             </button>
-        </div>
+          </div>
       </div>
 
-      {/* Main Matrix Table */}
+      {/* Tabs Switcher - ALWAYS VISIBLE */}
+      <div className="flex gap-2 mb-0 border-b border-slate-200">
+          <button 
+            onClick={() => setters.setActiveTab('SUMMATIVE')}
+            className={`relative px-6 py-3 text-sm font-bold rounded-t-xl transition-all flex items-center gap-2 border-t border-x
+                ${activeTab === 'SUMMATIVE' 
+                    ? 'bg-white text-purple-600 border-slate-200 border-b-white translate-y-[1px] shadow-[0_-2px_5px_rgba(0,0,0,0.02)]' 
+                    : 'bg-slate-50 text-slate-500 border-transparent hover:bg-slate-100'
+                }`}
+          >
+              <span className={`material-symbols-outlined ${activeTab === 'SUMMATIVE' ? 'filled' : ''}`}>equalizer</span>
+              Nilai Sumatif
+          </button>
+          <button 
+            onClick={() => setters.setActiveTab('FORMATIVE')}
+            className={`relative px-6 py-3 text-sm font-bold rounded-t-xl transition-all flex items-center gap-2 border-t border-x
+                ${activeTab === 'FORMATIVE' 
+                    ? 'bg-white text-blue-600 border-slate-200 border-b-white translate-y-[1px] shadow-[0_-2px_5px_rgba(0,0,0,0.02)]' 
+                    : 'bg-slate-50 text-slate-500 border-transparent hover:bg-slate-100'
+                }`}
+          >
+              <span className={`material-symbols-outlined ${activeTab === 'FORMATIVE' ? 'filled' : ''}`}>checklist</span>
+              Ceklis Formatif
+          </button>
+      </div>
+
+      {/* Main Table Area */}
       {selectedClass ? (
-        <div className="bg-white border border-t-0 border-slate-200 rounded-b-xl overflow-hidden shadow-sm flex flex-col animate-in fade-in slide-in-from-top-2">
-            <div className="overflow-x-auto custom-scrollbar">
-            <table className="w-full text-left border-collapse table-fixed">
-                <thead>
-                {/* Group Headers (TP) */}
-                <tr className="bg-slate-50 border-b border-slate-200">
-                    <th className="sticky-col bg-slate-50 w-12 px-4 py-2 border-r border-slate-200"></th>
-                    <th className="sticky-col-2 bg-slate-50 w-64 px-4 py-2 border-r border-slate-200"></th>
-                    {props.tps.map(tp => (
-                        <th 
-                            key={tp.id} 
-                            className="px-4 py-2 text-center text-[11px] font-bold text-slate-500 uppercase tracking-widest border-r border-slate-200 relative group cursor-help bg-slate-50 hover:bg-slate-100 transition-colors" 
-                            colSpan={tp.criteria.length || 1}
-                        >
-                            {tp.code.toUpperCase()}
-                            {/* Tooltip for TP */}
-                            <div className="absolute hidden group-hover:block bg-slate-800 text-white p-3 rounded-lg text-xs w-64 top-full mt-1 left-1/2 -translate-x-1/2 z-50 font-normal shadow-xl text-left leading-relaxed">
-                                <div className="font-bold text-blue-200 mb-1">{tp.code.toUpperCase()}</div>
-                                {tp.description}
-                            </div>
-                        </th>
-                    ))}
-                    <th className="w-24 px-4 py-2 border-r border-slate-200"></th>
-                    <th className="px-4 py-2 text-center text-[11px] font-bold text-slate-400 uppercase tracking-widest" colSpan={2}>Kalkulasi Akhir</th>
-                </tr>
-                {/* Column Headers (Criteria/KR) */}
-                <tr className="bg-slate-50 border-b border-slate-200">
-                    <th className="sticky-col bg-slate-50 w-12 px-4 py-3 text-xs font-bold text-slate-600 border-r border-slate-200 text-center">No</th>
-                    <th className="sticky-col-2 bg-slate-50 w-64 px-4 py-3 text-xs font-bold text-slate-600 border-r border-slate-200">Nama Siswa</th>
-                    {props.tps.map(tp => (
-                        tp.criteria.length > 0 ? (
-                            tp.criteria.map(cr => (
-                                <th 
-                                    key={cr.id} 
-                                    className="w-24 px-2 py-3 text-xs font-bold text-slate-600 text-center border-r border-slate-200 relative group cursor-help bg-slate-50 hover:bg-blue-50 transition-colors"
-                                >
-                                    {cr.code.toUpperCase()}
-                                    {/* Tooltip for Criteria */}
-                                    <div className="absolute hidden group-hover:block bg-slate-800 text-white p-2 rounded-lg text-xs w-48 bottom-full mb-2 left-1/2 -translate-x-1/2 z-50 font-normal shadow-xl">
-                                        <div className="font-bold text-green-200 mb-0.5 border-b border-white/20 pb-1">{cr.code.toUpperCase()}</div>
-                                        {cr.description}
-                                        <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-slate-800"></div>
+        <div className="bg-white border border-t-0 border-slate-200 rounded-b-xl rounded-tr-xl overflow-hidden shadow-sm flex flex-col min-h-[500px]">
+            
+            {/* ======================= FORMATIVE TAB ======================= */}
+            {activeTab === 'FORMATIVE' && (
+                <div className="flex-1 overflow-x-auto custom-scrollbar bg-white animate-in fade-in slide-in-from-left-4 duration-300">
+                    <table className="w-full text-left border-collapse table-fixed">
+                        <thead>
+                            <tr className="bg-slate-50 border-b border-slate-200 text-slate-600">
+                                <th rowSpan={3} className="sticky-col bg-slate-50 w-12 px-2 py-3 text-xs font-bold text-center border-r border-slate-200 z-30">No</th>
+                                <th rowSpan={3} className="sticky-col-2 bg-slate-50 w-64 px-4 py-3 text-xs font-bold border-r border-slate-200 z-30 shadow-[4px_0_10px_-2px_rgba(0,0,0,0.05)]">
+                                    <div className="flex flex-col gap-1">
+                                        <span>Nama Siswa</span>
                                     </div>
                                 </th>
-                            ))
-                        ) : (
-                            <th key={`empty-${tp.id}`} className="w-24 px-2 py-3 text-xs font-bold text-red-300 text-center border-r border-slate-200 italic">No Criteria</th>
-                        )
-                    ))}
-                    <th className="w-24 px-4 py-3 text-xs font-bold text-slate-600 text-center border-r border-slate-200">Sikap</th>
-                    <th className="w-24 px-4 py-3 text-xs font-bold text-slate-600 text-center border-r border-slate-200">NA</th>
-                    <th className="w-40 px-4 py-3 text-xs font-bold text-slate-600 text-center">Status</th>
-                </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                    {filteredStudents.length > 0 ? (
-                        filteredStudents.map((student, index) => {
-                            const result = calculateStudentGrade(student.id, props.globalGradeData, props.tps, props.subject.kktp);
-                            return (
-                                <tr key={student.id} className="group hover:bg-primary/5 transition-colors">
-                                    <td className="sticky-col bg-white group-hover:bg-[#f2f8fe] text-center text-xs text-slate-500 border-r border-slate-100 transition-colors">{index + 1}</td>
-                                    <td className="sticky-col-2 bg-white group-hover:bg-[#f2f8fe] px-4 py-0 font-medium text-sm text-slate-700 border-r border-slate-100 transition-colors">
-                                        {student.name}
-                                        <div className="flex gap-2 items-center mt-0.5">
-                                            <span className="text-[10px] text-slate-400 font-normal bg-slate-50 px-1 rounded">{student.nis}</span>
-                                            {!selectedClass && <span className="text-[10px] text-blue-500 font-bold bg-blue-50 px-1 rounded">{student.className}</span>}
-                                        </div>
+                                
+                                {/* 1. Scope Header (Top Level) */}
+                                {Object.entries(tpsByScope).map(([scope, scopeTps]) => {
+                                    const totalCriteria = scopeTps.reduce((acc, tp) => acc + tp.criteria.length, 0);
+                                    if(totalCriteria === 0) return null;
+
+                                    return (
+                                        <th key={scope} colSpan={totalCriteria} className="px-4 py-2 text-center text-xs font-extrabold text-blue-700 bg-blue-50/50 border-r border-slate-200 border-b uppercase tracking-wider">
+                                            {scope}
+                                        </th>
+                                    );
+                                })}
+                            </tr>
+                            
+                            {/* 2. TP Header (Mid Level) */}
+                            <tr className="bg-slate-50 border-b border-slate-200">
+                                {Object.values(tpsByScope).map(scopeTps => (
+                                    scopeTps.map(tp => (
+                                        tp.criteria.length > 0 && (
+                                            <th key={tp.id} colSpan={tp.criteria.length} className="px-3 py-2 text-left text-[10px] font-bold text-slate-600 border-r border-slate-200 align-top bg-white min-w-[150px]">
+                                                <div className="flex flex-col gap-1">
+                                                    <span className="text-[9px] text-blue-500 font-mono bg-blue-50 w-fit px-1 rounded">{tp.code}</span>
+                                                    <span className="line-clamp-2 leading-tight" title={tp.description}>{tp.description}</span>
+                                                </div>
+                                            </th>
+                                        )
+                                    ))
+                                ))}
+                            </tr>
+
+                            {/* 3. Criteria Header (Bottom Level) */}
+                            <tr className="bg-slate-50 border-b border-slate-200">
+                                {Object.values(tpsByScope).map(scopeTps => (
+                                    scopeTps.map(tp => (
+                                        tp.criteria.map((cr, idx) => (
+                                            <th key={cr.id} className="px-1 py-2 text-center w-16 border-r border-slate-200 bg-slate-50/30">
+                                                <div className="flex flex-col items-center group relative cursor-help">
+                                                    <span className="text-[10px] font-bold text-slate-500">K.{idx + 1}</span>
+                                                    <div className="absolute bottom-full mb-2 hidden group-hover:block w-48 bg-slate-800 text-white text-[10px] p-2 rounded shadow-lg z-50 text-left">
+                                                        {cr.description}
+                                                    </div>
+                                                </div>
+                                            </th>
+                                        ))
+                                    ))
+                                ))}
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                            {filteredStudents.map((student, index) => (
+                                <tr key={student.id} className="group hover:bg-blue-50/30 transition-colors">
+                                    <td className="sticky-col bg-white group-hover:bg-[#f3f7fc] text-center text-xs text-slate-500 border-r border-slate-100 font-medium">{index + 1}</td>
+                                    <td className="sticky-col-2 bg-white group-hover:bg-[#f3f7fc] px-4 py-3 border-r border-slate-100 z-20 shadow-[4px_0_10px_-2px_rgba(0,0,0,0.05)]">
+                                        <p className="font-bold text-sm text-slate-800 truncate">{student.name}</p>
+                                        <p className="text-[10px] text-slate-400 font-mono">{student.nis}</p>
                                     </td>
                                     
-                                    {/* Dynamic Criteria Inputs Nested by TP */}
-                                    {props.tps.map(tp => (
-                                        tp.criteria.length > 0 ? (
+                                    {Object.values(tpsByScope).map(scopeTps => (
+                                        scopeTps.map(tp => (
                                             tp.criteria.map(cr => {
-                                                const err = errorMap[`${student.id}-criteria-${cr.id}`];
+                                                const isChecked = props.globalGradeData[student.id]?.formative?.[cr.id] || false;
                                                 return (
-                                                    <td key={cr.id} className="p-0 border-r border-slate-100 relative">
-                                                        <input 
-                                                            type="number" 
-                                                            className={`w-full h-10 border-none bg-transparent text-center text-sm focus:ring-0 focus:bg-white focus:shadow-inner ${err ? 'text-red-500 bg-red-50' : 'text-slate-800'}`}
-                                                            value={props.globalGradeData[student.id]?.scores?.[cr.id] ?? ''}
-                                                            onChange={(e) => handlers.handleScoreChange(student.id, 'criteria', cr.id, e.target.value)}
-                                                            placeholder="-"
-                                                        />
+                                                    <td key={cr.id} className="p-0 border-r border-slate-100 text-center relative">
+                                                        <label className="flex items-center justify-center w-full h-full min-h-[44px] cursor-pointer hover:bg-blue-100/50 transition-colors">
+                                                            <input 
+                                                                type="checkbox" 
+                                                                className="hidden peer"
+                                                                checked={isChecked}
+                                                                onChange={(e) => handlers.handleFormativeCheck(student.id, cr.id, e.target.checked)}
+                                                            />
+                                                            <div className={`
+                                                                size-5 rounded border flex items-center justify-center transition-all duration-200
+                                                                ${isChecked 
+                                                                    ? 'bg-blue-500 border-blue-500 text-white scale-110 shadow-sm' 
+                                                                    : 'bg-white border-slate-300 text-transparent'
+                                                                }
+                                                            `}>
+                                                                <span className="material-symbols-outlined text-sm font-bold">check</span>
+                                                            </div>
+                                                        </label>
                                                     </td>
                                                 );
                                             })
-                                        ) : (
-                                            <td key={`empty-cell-${tp.id}`} className="p-0 border-r border-slate-100 bg-slate-50"></td>
-                                        )
+                                        ))
                                     ))}
-
-                                    {/* Attitude */}
-                                    <td className="p-0 border-r border-slate-100">
-                                        <input 
-                                            type="number"
-                                            className="w-full h-10 border-none bg-transparent text-center text-sm focus:ring-0 focus:bg-white focus:shadow-inner text-slate-800"
-                                            value={props.globalGradeData[student.id]?.attitude ?? ''}
-                                            onChange={(e) => handlers.handleScoreChange(student.id, 'attitude', 'value', e.target.value)}
-                                            placeholder="-"
-                                        />
-                                    </td>
-                                    {/* Final & Status */}
-                                    <td className="px-4 text-center font-bold text-sm bg-slate-50 border-r border-slate-200 text-primary">
-                                        {result.finalScore || '-'}
-                                    </td>
-                                    <td className="px-4 text-center">
-                                        {result.finalScore > 0 && (
-                                            <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${result.isPassed ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                                                {result.isPassed ? 'Tuntas' : 'Remedial'}
-                                            </span>
-                                        )}
-                                    </td>
                                 </tr>
-                            )
-                        })
-                    ) : (
-                        <tr>
-                            <td colSpan={10} className="p-12 text-center text-slate-400 italic bg-slate-50/50">
-                                Tidak ada siswa di kelas ini.
-                            </td>
-                        </tr>
-                    )}
-                </tbody>
-            </table>
-            </div>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
 
-            {/* Footer Stats */}
-            <div className="bg-slate-50 border-t border-slate-200 px-6 py-3 flex justify-between items-center text-xs font-semibold text-slate-500">
-                <div className="flex gap-6">
-                    <span>TOTAL SISWA: {filteredStudents.length}</span>
-                    <span className="text-green-600">TUNTAS: {stats.tuntas}</span>
-                    <span className="text-red-600">REMEDIAL: {stats.remedial}</span>
+            {/* ======================= SUMMATIVE TAB ======================= */}
+            {activeTab === 'SUMMATIVE' && (
+                <div className="flex-1 overflow-x-auto custom-scrollbar bg-white animate-in fade-in slide-in-from-bottom-4 duration-300">
+                    <table className="w-full text-left border-collapse table-fixed">
+                        <thead>
+                            <tr className="bg-slate-50 border-b border-slate-200">
+                                <th className="sticky-col bg-slate-50 w-12 px-2 py-3 text-xs font-bold text-center border-r border-slate-200 text-slate-600">No</th>
+                                <th className="sticky-col-2 bg-slate-50 w-64 px-4 py-3 text-xs font-bold border-r border-slate-200 text-slate-600 shadow-[4px_0_10px_-2px_rgba(0,0,0,0.05)]">
+                                    Identitas Siswa
+                                </th>
+                                
+                                {/* Dynamic Scope Columns */}
+                                {uniqueScopes.length > 0 ? uniqueScopes.map(scope => (
+                                    <th key={scope} className="w-40 px-4 py-3 text-xs font-bold text-slate-700 text-center border-r border-slate-200 uppercase bg-purple-50/30">
+                                        <div className="line-clamp-2" title={scope}>{scope}</div>
+                                    </th>
+                                )) : (
+                                    <th className="w-64 px-4 py-3 text-xs font-bold text-red-400 text-center border-r border-slate-200 italic">
+                                        Belum ada TP / Lingkup Materi
+                                    </th>
+                                )}
+                                
+                                {/* Fixed Columns */}
+                                <th className="w-32 px-4 py-3 text-xs font-black text-purple-700 text-center border-r border-slate-200 bg-purple-50">
+                                    Nilai Akhir
+                                </th>
+                                <th className="w-40 px-4 py-3 text-xs font-bold text-slate-600 text-center">
+                                    Status
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                            {filteredStudents.map((student, index) => {
+                                // Calculate grade using Filtered TPs (matching the selected subject)
+                                const result = calculateStudentGrade(student.id, props.globalGradeData, filteredTPs, props.subject.kktp);
+                                return (
+                                    <tr key={student.id} className="group hover:bg-purple-50/20 transition-colors">
+                                        <td className="sticky-col bg-white group-hover:bg-[#faf8fe] text-center text-xs text-slate-500 border-r border-slate-100 font-medium">{index + 1}</td>
+                                        <td className="sticky-col-2 bg-white group-hover:bg-[#faf8fe] px-4 py-3 border-r border-slate-100 z-20 shadow-[4px_0_10px_-2px_rgba(0,0,0,0.05)]">
+                                            <p className="font-bold text-sm text-slate-800 truncate">{student.name}</p>
+                                            <p className="text-[10px] text-slate-400 font-mono">{student.nis}</p>
+                                        </td>
+                                        
+                                        {/* Score Inputs by Scope */}
+                                        {uniqueScopes.length > 0 ? uniqueScopes.map(scope => {
+                                            const score = props.globalGradeData[student.id]?.summative?.[scope] ?? '';
+                                            return (
+                                                <td key={scope} className="p-0 border-r border-slate-100 relative">
+                                                    <div className="relative w-full h-full">
+                                                        <input 
+                                                            type="number" 
+                                                            min="0" max="100"
+                                                            className="w-full h-12 border-none bg-transparent text-center text-sm font-bold focus:ring-0 focus:bg-purple-100 focus:text-purple-700 text-slate-800 placeholder-slate-200 transition-colors"
+                                                            value={score}
+                                                            onChange={(e) => handlers.handleSummativeScore(student.id, scope, e.target.value)}
+                                                            placeholder="0"
+                                                            onFocus={(e) => e.target.select()}
+                                                        />
+                                                        {score === '' && (
+                                                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-0 group-hover:opacity-100">
+                                                                <span className="material-symbols-outlined text-slate-200 text-lg">edit</span>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                            );
+                                        }) : (
+                                            <td className="bg-slate-50"></td>
+                                        )}
+
+                                        {/* Final Result */}
+                                        <td className="px-4 text-center bg-purple-50 border-r border-slate-200">
+                                            <span className={`text-lg font-black ${result.finalScore >= props.subject.kktp ? 'text-green-600' : 'text-red-500'}`}>
+                                                {result.finalScore || '-'}
+                                            </span>
+                                        </td>
+
+                                        {/* Status Column (Restored) */}
+                                        <td className="px-4 text-center">
+                                            {result.finalScore > 0 && (
+                                                <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border
+                                                    ${result.isPassed 
+                                                        ? 'bg-green-100 text-green-700 border-green-200' 
+                                                        : 'bg-red-100 text-red-700 border-red-200'
+                                                    }
+                                                `}>
+                                                    <span className="material-symbols-outlined text-sm">{result.isPassed ? 'check_circle' : 'warning'}</span>
+                                                    {result.isPassed ? 'Tuntas' : 'Remedial'}
+                                                </span>
+                                            )}
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+
+            {/* Footer Stats & Info */}
+            <div className="bg-slate-50 border-t border-slate-200 px-6 py-4 flex flex-col md:flex-row justify-between items-center text-xs font-medium text-slate-500 gap-4">
+                <div className="flex gap-6 items-center">
+                    <div className="flex items-center gap-2">
+                        <span className="bg-slate-200 text-slate-600 px-2 py-1 rounded text-[10px] font-bold">TOTAL</span>
+                        <span className="text-slate-700 font-bold text-sm">{filteredStudents.length} Siswa</span>
+                    </div>
+                    {activeTab === 'SUMMATIVE' && (
+                        <>
+                            <div className="h-4 w-px bg-slate-300"></div>
+                            <div className="flex items-center gap-2">
+                                <span className="bg-purple-100 text-purple-700 px-2 py-1 rounded text-[10px] font-bold">RATA-RATA</span>
+                                <span className="text-purple-700 font-bold text-sm">
+                                    {filteredStudents.length > 0 ? 
+                                        (filteredStudents.reduce((acc, s) => acc + calculateStudentGrade(s.id, props.globalGradeData, filteredTPs, props.subject.kktp).finalScore, 0) / filteredStudents.length).toFixed(1) 
+                                        : '0'
+                                    }
+                                </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className="bg-green-100 text-green-700 px-2 py-1 rounded text-[10px] font-bold">TUNTAS</span>
+                                <span className="text-green-700 font-bold text-sm">{stats.tuntas}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className="bg-red-100 text-red-700 px-2 py-1 rounded text-[10px] font-bold">REMEDIAL</span>
+                                <span className="text-red-700 font-bold text-sm">{stats.remedial}</span>
+                            </div>
+                        </>
+                    )}
+                </div>
+                
+                <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded border border-slate-200 shadow-sm">
+                    <span className="material-symbols-outlined text-blue-500 text-sm">info</span>
+                    <span>Nilai Akhir adalah rata-rata dari seluruh lingkup materi.</span>
                 </div>
             </div>
         </div>
       ) : (
-        <div className="bg-white border border-t-0 border-slate-200 rounded-b-xl p-12 flex flex-col items-center justify-center text-slate-400 min-h-[400px]">
-             <div className="bg-slate-50 p-6 rounded-full mb-4">
-                <span className="material-symbols-outlined text-4xl text-slate-300">fact_check</span>
+        // Empty State (Updated with Tab Context)
+        <div className="bg-white border border-t-0 border-slate-200 rounded-b-xl rounded-tr-xl p-12 flex flex-col items-center justify-center text-slate-400 min-h-[400px] shadow-sm animate-in fade-in slide-in-from-bottom-4">
+             <div className={`p-6 rounded-full mb-4 ring-8 ring-opacity-50 text-4xl ${activeTab === 'FORMATIVE' ? 'bg-blue-50 text-blue-400 ring-blue-50' : 'bg-purple-50 text-purple-400 ring-purple-50'}`}>
+                <span className="material-symbols-outlined text-5xl">{activeTab === 'FORMATIVE' ? 'checklist' : 'equalizer'}</span>
              </div>
-             <p className="text-lg font-bold text-slate-600">Mulai Penilaian</p>
-             <p className="text-sm">Silahkan pilih <strong className="text-slate-700">Kelas</strong> dan <strong className="text-slate-700">Mata Pelajaran</strong> terlebih dahulu untuk menampilkan lembar kerja.</p>
+             <h3 className="text-xl font-bold text-slate-700 mb-2">
+                 Mulai {activeTab === 'FORMATIVE' ? 'Ceklis Formatif' : 'Input Nilai Sumatif'}
+             </h3>
+             <p className="text-sm max-w-md text-center">
+                 Silahkan pilih <strong className="text-primary">Kelas</strong> dan <strong className="text-primary">Mata Pelajaran</strong> pada toolbar di atas untuk menampilkan lembar {activeTab === 'FORMATIVE' ? 'observasi' : 'penilaian'}.
+             </p>
         </div>
       )}
       
-      {/* System Status */}
-      <div className="mt-4 flex justify-between items-center text-[10px] uppercase tracking-widest text-slate-400">
+      {/* System Status Footer */}
+      <div className="mt-6 flex justify-between items-center text-[10px] uppercase tracking-widest text-slate-400 font-bold">
         <div className="flex items-center gap-2">
-            <span className="size-2 rounded-full bg-green-500 animate-pulse"></span>
-            System Ready
+            <div className="relative">
+                <span className="size-2 rounded-full bg-green-500 absolute animate-ping opacity-75"></span>
+                <span className="size-2 rounded-full bg-green-500 relative block"></span>
+            </div>
+            Auto-Save Active
         </div>
         <div>
-          Last Sync: {currentTime.toLocaleTimeString('id-ID', {timeZone: 'Asia/Makassar', hour: '2-digit', minute: '2-digit'})} WITA
+          Last Sync: {state.currentTime.toLocaleTimeString('id-ID', {timeZone: 'Asia/Makassar', hour: '2-digit', minute: '2-digit'})} WITA
         </div>
       </div>
-
-       {/* Config Modal */}
-       {showConfig && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-            <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl">
-                <div className="p-4 border-b border-slate-100 flex justify-between items-center">
-                    <h3 className="font-bold text-slate-900">Parameter Penilaian</h3>
-                    <button onClick={() => setters.setShowConfig(false)} className="text-slate-400 hover:text-slate-600">
-                        <span className="material-symbols-outlined">close</span>
-                    </button>
-                </div>
-                <div className="p-6 space-y-4">
-                     <div>
-                        <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Bobot Nilai Akademik (Formatif/Sumatif)</label>
-                        <div className="flex items-center gap-2">
-                            <input 
-                                type="number" 
-                                value={tempWeights.criteria}
-                                onChange={(e) => setters.setTempWeights(prev => ({...prev, criteria: Number(e.target.value)}))}
-                                className="w-full border-slate-200 rounded-lg text-center font-bold text-slate-900" 
-                            />
-                            <span className="text-slate-500 font-bold">%</span>
-                        </div>
-                     </div>
-                     <div>
-                        <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Bobot Nilai Sikap</label>
-                        <div className="flex items-center gap-2">
-                             <input 
-                                type="number" 
-                                value={tempWeights.attitude}
-                                onChange={(e) => setters.setTempWeights(prev => ({...prev, attitude: Number(e.target.value)}))}
-                                className="w-full border-slate-200 rounded-lg text-center font-bold text-slate-900" 
-                            />
-                            <span className="text-slate-500 font-bold">%</span>
-                        </div>
-                     </div>
-                     <div className={`text-xs font-bold text-center ${tempWeights.criteria + tempWeights.attitude === 100 ? 'text-green-600' : 'text-red-500'}`}>
-                         Total: {tempWeights.criteria + tempWeights.attitude}%
-                     </div>
-                     <button 
-                        onClick={handlers.handleSaveWeights}
-                        className="w-full py-2.5 bg-primary text-white rounded-lg font-bold hover:bg-blue-600"
-                     >
-                         Simpan Parameter
-                     </button>
-                </div>
-            </div>
-        </div>
-      )}
     </div>
   );
 };

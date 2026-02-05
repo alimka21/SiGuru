@@ -1,10 +1,9 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useLocation } from 'react-router-dom';
 import { z } from 'zod'; 
-import { Student, LearningObjective, GradeData, Subject } from '../types';
+import { Student, LearningObjective, GradeData, Subject, IdentityData } from '../types';
 import { calculateStudentGrade } from '../utils/grading';
-
-const scoreSchema = z.number().min(0, "Min 0").max(100, "Max 100").optional();
 
 interface UseGradingLogicProps {
   students: Student[];
@@ -13,6 +12,7 @@ interface UseGradingLogicProps {
   initialClass?: string;
   globalGradeData: GradeData;
   setGlobalGradeData: React.Dispatch<React.SetStateAction<GradeData>>;
+  identity: IdentityData; // Added identity for role based logic
 }
 
 export const useGradingLogic = ({
@@ -21,31 +21,47 @@ export const useGradingLogic = ({
   subject,
   initialClass,
   globalGradeData,
-  setGlobalGradeData
+  setGlobalGradeData,
+  identity
 }: UseGradingLogicProps) => {
+  // --- ROUTER LOCATION ---
+  const location = useLocation();
+
   // --- STATE ---
-  const [errorMap, setErrorMap] = useState<{[key: string]: string}>({});
+  // Restore Tabs Logic
+  const [activeTab, setActiveTab] = useState<'FORMATIVE' | 'SUMMATIVE'>('SUMMATIVE');
+
   const [currentTime, setCurrentTime] = useState(new Date());
   
-  // Weights State
-  const [showConfig, setShowConfig] = useState(false);
-  const [weights, setWeights] = useState({ criteria: 90, attitude: 10 });
-  const [tempWeights, setTempWeights] = useState({ criteria: 90, attitude: 10 });
-
   // Filters
   const [selectedClass, setSelectedClass] = useState<string>('');
-  const [selectedSubject, setSelectedSubject] = useState<string>(subject.id);
+  const [selectedSubject, setSelectedSubject] = useState<string>('');
 
   // --- EFFECTS ---
   
-  // Handle navigation from Dashboard
+  // 1. Initialize Class
   useEffect(() => {
-    if (initialClass) {
-        setSelectedClass(initialClass);
-    }
+    if (initialClass) setSelectedClass(initialClass);
   }, [initialClass]);
 
-  // Update time every minute
+  // 2. Initialize Subject based on Identity
+  useEffect(() => {
+      // Jika belum ada subject yang dipilih
+      if (!selectedSubject) {
+          if (identity.role === 'SUBJECT_TEACHER' && identity.subjectName) {
+              // Guru Mapel: Default ke mapel mereka, tapi nanti bisa diubah via dropdown jika list tersedia
+              // Kita set ID mapel. Karena di mock data ID mapel statis, kita coba match nama dulu atau default.
+              // Untuk simplifikasi mock, kita set default ke 's1' atau ID yang sesuai jika ada match.
+              // Di real app, ini akan mencari ID based on Name.
+              setSelectedSubject('s1'); // Default fallback
+          } else {
+              // Guru Kelas (SD): Default ke Mapel pertama (misal Matematika / B.Indo)
+              setSelectedSubject('Bahasa Indonesia'); 
+          }
+      }
+  }, [identity, selectedSubject]);
+
+  // 3. Time Interval
   useEffect(() => {
     const interval = setInterval(() => setCurrentTime(new Date()), 60000);
     return () => clearInterval(interval);
@@ -60,85 +76,116 @@ export const useGradingLogic = ({
 
   const filteredStudents = useMemo(() => {
       if (!selectedClass) return [];
-      return students.filter(s => s.className === selectedClass);
+      return students.filter(s => s.className === selectedClass).sort((a,b) => a.name.localeCompare(b.name));
   }, [students, selectedClass]);
+
+  // Filter TPs based on Selected Subject (Crucial for SD vs Mapel context)
+  // Note: In a real app, TPs have a subjectId. We filter by that.
+  // Since mock TPs might not strictly follow, we try to filter if subjectId matches, or show all if undefined.
+  const filteredTPs = useMemo(() => {
+      // Logic: Filter TPs by selected Subject ID/Name
+      // If TP.subjectId is missing, assume it belongs to all (or generic)
+      // For this prototype, we map specific subjects if needed.
+      return tps; 
+      // In production: return tps.filter(tp => tp.subjectId === selectedSubject);
+  }, [tps, selectedSubject]);
+
+  // 1. SUMMATIVE COLUMNS: Unique Scopes from Filtered TPs
+  const uniqueScopes = useMemo(() => {
+      const scopes = new Set<string>();
+      filteredTPs.forEach(tp => {
+          scopes.add(tp.scope || 'Materi Umum');
+      });
+      return Array.from(scopes).sort();
+  }, [filteredTPs]);
+
+  // 2. FORMATIVE COLUMNS: Group Filtered TPs by Scope
+  const tpsByScope = useMemo(() => {
+      const grouped: Record<string, LearningObjective[]> = {};
+      filteredTPs.forEach(tp => {
+          const s = tp.scope || 'Materi Umum';
+          if (!grouped[s]) grouped[s] = [];
+          grouped[s].push(tp);
+      });
+      return grouped;
+  }, [filteredTPs]);
 
   // Stats Calculation
   const stats = useMemo(() => {
       return filteredStudents.reduce((acc, student) => {
-          const res = calculateStudentGrade(student.id, globalGradeData, tps, subject.kktp);
+          const res = calculateStudentGrade(student.id, globalGradeData, filteredTPs, subject.kktp);
           if (res.finalScore > 0) {
               if (res.isPassed) acc.tuntas++; else acc.remedial++;
           }
           return acc;
       }, { tuntas: 0, remedial: 0 });
-  }, [filteredStudents, globalGradeData, tps, subject.kktp]);
+  }, [filteredStudents, globalGradeData, filteredTPs, subject.kktp]);
 
   // --- HANDLERS ---
 
-  const handleScoreChange = useCallback((
-    studentId: string, 
-    type: 'criteria' | 'attitude', 
-    id: string | 'value', 
-    value: string
-  ) => {
-    const numValue = value === '' ? undefined : parseFloat(value);
-    const result = scoreSchema.safeParse(numValue);
-    const errorKey = `${studentId}-${type}-${id}`;
-
-    if (!result.success && value !== '') {
-        setErrorMap(prev => ({...prev, [errorKey]: result.error.issues[0].message}));
-    } else {
-        setErrorMap(prev => {
-            const newMap = {...prev};
-            delete newMap[errorKey];
-            return newMap;
-        });
-    }
-    
-    setGlobalGradeData(prev => {
-      const studentData = prev[studentId] || { scores: {}, attitude: 0 };
-      if (type === 'criteria') {
-        return { ...prev, [studentId]: { ...studentData, scores: { ...studentData.scores, [id]: numValue as number } } };
-      } else {
-        return { ...prev, [studentId]: { ...studentData, attitude: numValue || 0 } };
-      }
-    });
+  // Handle Formative Checkbox (Boolean)
+  const handleFormativeCheck = useCallback((studentId: string, criteriaId: string, checked: boolean) => {
+      setGlobalGradeData(prev => {
+          const sData = prev[studentId] || { formative: {}, summative: {}, attitude: 0 };
+          return {
+              ...prev,
+              [studentId]: {
+                  ...sData,
+                  formative: {
+                      ...(sData.formative || {}),
+                      [criteriaId]: checked
+                  }
+              }
+          };
+      });
   }, [setGlobalGradeData]);
 
-  const handleSaveWeights = () => {
-      if (tempWeights.criteria + tempWeights.attitude !== 100) {
-          alert("Total bobot harus 100%");
-          return;
+  // Handle Summative Input (Number) by Scope
+  const handleSummativeScore = useCallback((studentId: string, scopeName: string, value: string) => {
+      const numValue = value === '' ? undefined : parseFloat(value);
+      
+      if (numValue !== undefined && (numValue < 0 || numValue > 100)) {
+          return; 
       }
-      setWeights(tempWeights);
-      setShowConfig(false);
-  };
+
+      setGlobalGradeData(prev => {
+          const sData = prev[studentId] || { formative: {}, summative: {}, attitude: 0 };
+          return {
+              ...prev,
+              [studentId]: {
+                  ...sData,
+                  summative: {
+                      ...(sData.summative || {}),
+                      [scopeName]: numValue !== undefined ? numValue : 0
+                  }
+              }
+          };
+      });
+  }, [setGlobalGradeData]);
 
   return {
     state: {
-      errorMap,
+      activeTab,
       currentTime,
-      showConfig,
-      weights,
-      tempWeights,
       selectedClass,
       selectedSubject
     },
     setters: {
-      setShowConfig,
-      setTempWeights,
+      setActiveTab,
       setSelectedClass,
       setSelectedSubject
     },
     computed: {
       availableClasses,
       filteredStudents,
-      stats
+      uniqueScopes,
+      tpsByScope, 
+      stats,
+      filteredTPs
     },
     handlers: {
-      handleScoreChange,
-      handleSaveWeights
+      handleFormativeCheck,
+      handleSummativeScore
     }
   };
 };

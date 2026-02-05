@@ -393,6 +393,7 @@ const AppContent = () => {
                     onNavigate={handleContextNavigate} identity={identity} schedules={schedules}
                     classes={classes} students={students} attendanceData={attendanceData}
                     gradeData={gradeData} subject={subject} tps={tps}
+                    onSaveIdentity={handleIdentitySave} // Pass callback for onboarding
                 />
             } />
             
@@ -419,7 +420,7 @@ const AppContent = () => {
                     <CurriculumManager identity={identity} subject={subject} tps={tps} onUpdateSubject={(kktp) => setSubject(prev => ({...prev, kktp}))} onUpdateTPs={setTps} onBack={() => navigate('/dashboard')} />
                 } />
                 <Route path="cp-generator" element={
-                    <CPGenerator onSave={handleSaveGeneratedTPs} onBack={() => navigate('/dashboard')} />
+                    <CPGenerator onSave={handleSaveGeneratedTPs} onBack={() => navigate('/dashboard')} identity={identity} /> // Pass Identity
                 } />
             </Route>
 
@@ -429,7 +430,7 @@ const AppContent = () => {
                     <JournalManager journals={journals} onUpdateJournals={setJournals} tps={tps} schedules={schedules} classes={classes} onBack={() => navigate('/dashboard')} />
                 } />
                 <Route path="grading" element={
-                    <GradingSheet students={students} tps={tps} subject={subject} globalGradeData={gradeData} setGlobalGradeData={setGradeData} />
+                    <GradingSheet students={students} tps={tps} subject={subject} globalGradeData={gradeData} setGlobalGradeData={setGradeData} identity={identity} />
                 } />
                 <Route path="attendance" element={
                     <AttendanceSheet students={students} subject={subject} schedules={schedules} globalAttendance={attendanceData} setGlobalAttendance={setAttendanceData} />

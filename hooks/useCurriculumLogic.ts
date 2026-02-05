@@ -6,25 +6,18 @@ import { LearningMaterial, LearningObjective, Subject, AssessmentCriteria, Ident
 
 declare const Swal: any;
 
-// Constants moved outside component
 const SD_SUBJECTS = [
-    { id: 'math', name: 'Matematika' },
-    { id: 'indo', name: 'B. Indonesia' },
-    { id: 'ipas', name: 'IPAS' },
-    { id: 'ppkn', name: 'PPKn' },
-    { id: 'sbura', name: 'Seni Budaya' },
+    { id: 'Pendidikan Pancasila', name: 'Pendidikan Pancasila' },
+    { id: 'Bahasa Indonesia', name: 'Bahasa Indonesia' },
+    { id: 'Matematika', name: 'Matematika' },
+    { id: 'IPAS', name: 'Ilmu Pengetahuan Alam dan Sosial (IPAS)' },
+    { id: 'Seni Budaya', name: 'Seni Budaya' },
+    { id: 'PJOK', name: 'PJOK' },
+    { id: 'Bahasa Inggris', name: 'Bahasa Inggris' },
+    { id: 'Muatan Lokal', name: 'Muatan Lokal' }
 ];
 
-const SMP_LEVELS = [
-    { id: 'Fase D', name: 'Fase D (Kls 7-9)' },
-];
-
-const SMA_LEVELS = [
-    { id: 'Fase E', name: 'Fase E (Kls 10)' },
-    { id: 'Fase F', name: 'Fase F (Kls 11-12)' },
-];
-
-const SUBJECT_OPTIONS = [
+const SECONDARY_SUBJECTS = [
     { id: 'Matematika', name: 'Matematika' },
     { id: 'Bahasa Indonesia', name: 'Bahasa Indonesia' },
     { id: 'Bahasa Inggris', name: 'Bahasa Inggris' },
@@ -35,7 +28,14 @@ const SUBJECT_OPTIONS = [
     { id: 'Seni Budaya', name: 'Seni Budaya' },
     { id: 'Informatika', name: 'Informatika' },
     { id: 'PAI', name: 'Pendidikan Agama Islam' },
-    { id: 'PAK', name: 'Pendidikan Agama Kristen' }
+    { id: 'PAK', name: 'Pendidikan Agama Kristen' },
+    { id: 'Sejarah', name: 'Sejarah' },
+    { id: 'Geografi', name: 'Geografi' },
+    { id: 'Ekonomi', name: 'Ekonomi' },
+    { id: 'Sosiologi', name: 'Sosiologi' },
+    { id: 'Fisika', name: 'Fisika' },
+    { id: 'Kimia', name: 'Kimia' },
+    { id: 'Biologi', name: 'Biologi' }
 ];
 
 interface UseCurriculumLogicProps {
@@ -51,31 +51,72 @@ export const useCurriculumLogic = ({ identity, tps, onUpdateTPs }: UseCurriculum
   const [isAddingTp, setIsAddingTp] = useState(false);
   
   // Forms
-  const [newTpForm, setNewTpForm] = useState({ code: '', description: '', semester: '1' });
+  const [newTpForm, setNewTpForm] = useState({ code: '', description: '', semester: '1', scope: '' });
   const [newItemForm, setNewItemForm] = useState<{
-      type: 'LM' | 'CRITERIA' | null, 
+      type: 'CRITERIA' | null, 
       parentId: string | null,
       val1: string, 
       val2: string 
   }>({ type: null, parentId: null, val1: '', val2: '' });
   const [newItemType, setNewItemType] = useState<AssessmentType>('FORMATIVE');
 
-  // --- DERIVED STATE (SCOPES) ---
+  // --- DERIVED SCOPES (Flexible based on Level) ---
   const scopes = useMemo(() => {
-      if (identity.level === 'SD') return SD_SUBJECTS;
-      else if (identity.level === 'SMP') return SMP_LEVELS;
-      else return SMA_LEVELS;
+      // Default Scopes (Classes)
+      if (identity.level === 'SD') {
+          return [
+              { id: 'Kelas 1', name: 'Kelas 1 (Fase A)' },
+              { id: 'Kelas 2', name: 'Kelas 2 (Fase A)' },
+              { id: 'Kelas 3', name: 'Kelas 3 (Fase B)' },
+              { id: 'Kelas 4', name: 'Kelas 4 (Fase B)' },
+              { id: 'Kelas 5', name: 'Kelas 5 (Fase C)' },
+              { id: 'Kelas 6', name: 'Kelas 6 (Fase C)' },
+          ];
+      } else if (identity.level === 'SMP') {
+          return [
+              { id: 'Kelas 7', name: 'Kelas 7 (Fase D)' },
+              { id: 'Kelas 8', name: 'Kelas 8 (Fase D)' },
+              { id: 'Kelas 9', name: 'Kelas 9 (Fase D)' },
+          ];
+      } else { // SMA / SMK
+          return [
+              { id: 'Kelas 10', name: 'Kelas 10 (Fase E)' },
+              { id: 'Kelas 11', name: 'Kelas 11 (Fase F)' },
+              { id: 'Kelas 12', name: 'Kelas 12 (Fase F)' },
+          ];
+      }
+  }, [identity.level]);
+
+  // Subject Logic
+  const subjectOptions = useMemo(() => {
+      return identity.level === 'SD' ? SD_SUBJECTS : SECONDARY_SUBJECTS;
   }, [identity.level]);
 
   // Filter States
   const [activeScopeId, setActiveScopeId] = useState<string>(scopes[0].id);
-  const [activeSubjectId, setActiveSubjectId] = useState<string>(
-      identity.role === 'SUBJECT_TEACHER' ? identity.subjectName : 'Matematika'
-  );
+  
+  // Active Subject State
+  const [activeSubjectId, setActiveSubjectId] = useState<string>('');
+  
+  // Check if active subject is in the predefined list (for "Lainnya" logic)
+  const isManualSubject = useMemo(() => {
+      return !subjectOptions.some(s => s.id === activeSubjectId) && activeSubjectId !== '' && activeSubjectId !== 'Lainnya';
+  }, [activeSubjectId, subjectOptions]);
+
+  useEffect(() => {
+      // Initialize active subject on load
+      if (!activeSubjectId) {
+          if (identity.role === 'SUBJECT_TEACHER' && identity.subjectName) {
+              setActiveSubjectId(identity.subjectName);
+          } else {
+              setActiveSubjectId(subjectOptions[0].id);
+          }
+      }
+  }, [identity, subjectOptions, activeSubjectId]);
 
   useEffect(() => {
       const exists = scopes.find(s => s.id === activeScopeId);
-      if (!exists) setActiveScopeId(scopes[0].id);
+      if (!exists && scopes.length > 0) setActiveScopeId(scopes[0].id);
   }, [scopes, activeScopeId]);
 
   const filteredTPs = useMemo(() => {
@@ -85,6 +126,22 @@ export const useCurriculumLogic = ({ identity, tps, onUpdateTPs }: UseCurriculum
           return scopeMatch && subjectMatch;
       });
   }, [tps, activeScopeId, activeSubjectId]);
+
+  // Grouping for View (Hierarchy Down: Scope -> TP)
+  const tpsByScope = useMemo(() => {
+      const groups: Record<string, LearningObjective[]> = {};
+      filteredTPs.forEach(tp => {
+          const s = tp.scope || 'Lingkup Materi Umum';
+          if (!groups[s]) groups[s] = [];
+          groups[s].push(tp);
+      });
+      return groups;
+  }, [filteredTPs]);
+
+  // Unique Scopes for Autocomplete
+  const uniqueScopes = useMemo(() => {
+      return Array.from(new Set(tps.map(t => t.scope || ''))).filter(Boolean).sort();
+  }, [tps]);
 
   // --- HANDLERS (CRUD) ---
 
@@ -97,18 +154,19 @@ export const useCurriculumLogic = ({ identity, tps, onUpdateTPs }: UseCurriculum
         semester: Number(newTpForm.semester) as 1 | 2,
         scopeId: activeScopeId,
         subjectId: activeSubjectId, 
+        scope: newTpForm.scope || 'Lingkup Materi Umum',
         lms: [],
         criteria: []
     };
     onUpdateTPs([...tps, newTp]);
     setIsAddingTp(false);
-    setNewTpForm({ code: '', description: '', semester: '1' });
+    setNewTpForm({ code: '', description: '', semester: '1', scope: '' });
   };
 
   const handleDeleteTP = (id: string) => {
       Swal.fire({
           title: 'Hapus Tujuan Pembelajaran?',
-          text: "Seluruh Lingkup Materi (LM) dan Kriteria yang ada di dalamnya akan ikut terhapus!",
+          text: "Seluruh Kriteria yang ada di dalamnya akan ikut terhapus!",
           icon: 'warning',
           showCancelButton: true,
           confirmButtonColor: '#d33',
@@ -126,26 +184,15 @@ export const useCurriculumLogic = ({ identity, tps, onUpdateTPs }: UseCurriculum
 
       const updatedTPs = tps.map(tp => {
           if(tp.id === newItemForm.parentId) {
-              if(newItemForm.type === 'LM') {
-                  return {
-                      ...tp,
-                      lms: [...tp.lms, { 
-                          id: Date.now().toString(), 
-                          code: newItemForm.val1.toUpperCase(), 
-                          title: newItemForm.val2 
-                      }]
-                  };
-              } else {
-                  return {
-                      ...tp,
-                      criteria: [...tp.criteria, { 
-                          id: Date.now().toString(), 
-                          code: newItemForm.val1.toUpperCase(), 
-                          description: newItemForm.val2,
-                          type: newItemType 
-                      }]
-                  };
-              }
+              return {
+                  ...tp,
+                  criteria: [...tp.criteria, { 
+                      id: Date.now().toString(), 
+                      code: newItemForm.val1.toUpperCase(), 
+                      description: newItemForm.val2,
+                      type: newItemType 
+                  }]
+              };
           }
           return tp;
       });
@@ -155,7 +202,7 @@ export const useCurriculumLogic = ({ identity, tps, onUpdateTPs }: UseCurriculum
       setNewItemType('FORMATIVE');
   };
 
-  const handleDeleteSubItem = (tpId: string, itemId: string, type: 'LM' | 'CRITERIA') => {
+  const handleDeleteSubItem = (tpId: string, itemId: string, type: 'CRITERIA') => {
       Swal.fire({
           title: 'Hapus Item?',
           text: "Item ini akan dihapus permanen.",
@@ -167,11 +214,7 @@ export const useCurriculumLogic = ({ identity, tps, onUpdateTPs }: UseCurriculum
           if (result.isConfirmed) {
               const updatedTPs = tps.map(tp => {
                   if(tp.id === tpId) {
-                      if(type === 'LM') {
-                          return { ...tp, lms: tp.lms.filter(l => l.id !== itemId) };
-                      } else {
-                          return { ...tp, criteria: tp.criteria.filter(c => c.id !== itemId) };
-                      }
+                      return { ...tp, criteria: tp.criteria.filter(c => c.id !== itemId) };
                   }
                   return tp;
               });
@@ -180,12 +223,12 @@ export const useCurriculumLogic = ({ identity, tps, onUpdateTPs }: UseCurriculum
       });
   };
 
-  // --- AI GENERATION ---
+  // --- AI GENERATION (KRITERIA ONLY) ---
   const generateTpDetails = async (tp: LearningObjective) => {
-      if (tp.lms.length > 0 || tp.criteria.length > 0) {
+      if (tp.criteria.length > 0) {
           const result = await Swal.fire({
-              title: 'TP Sudah Memiliki Detail',
-              text: "Data Lingkup Materi dan Kriteria yang sudah ada mungkin akan terduplikasi. Lanjutkan generate?",
+              title: 'TP Sudah Memiliki Kriteria',
+              text: "Melanjutkan akan menambahkan kriteria baru. Lanjutkan?",
               icon: 'warning',
               showCancelButton: true,
               confirmButtonText: 'Ya, Tambahkan',
@@ -200,14 +243,17 @@ export const useCurriculumLogic = ({ identity, tps, onUpdateTPs }: UseCurriculum
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
           const prompt = `
             Role: Expert Curriculum Developer for Indonesian School (Kurikulum Merdeka).
-            Context: Subject '${activeSubjectId}' for Grade '${identity.level} - ${activeScopeId}'.
+            Context: Subject '${activeSubjectId}' for Grade '${activeScopeId}'.
             Task: Based on the Learning Objective (TP) below, generate strictly:
-            1. 3 specific 'Lingkup Materi' (Learning Materials/Scope) titles.
-            2. 3 specific 'Assessment Criteria' (Kriteria Ketercapaian TP). Ensure mixed types (Formatif/Sumatif).
+            
+            2 to 3 specific 'Assessment Criteria' (Kriteria Ketercapaian Tujuan Pembelajaran / KKTP). 
+            - These are indicators to check if student achieved the TP.
+            - Keep it concise.
 
             TP Description: "${tp.description}" (Code: ${tp.code})
+            Scope: "${tp.scope}"
 
-            Output must be valid JSON object with arrays 'lms' and 'criteria'.
+            Output must be valid JSON object with array 'criteria'.
           `;
 
           const response = await ai.models.generateContent({
@@ -218,16 +264,6 @@ export const useCurriculumLogic = ({ identity, tps, onUpdateTPs }: UseCurriculum
                   responseSchema: {
                       type: Type.OBJECT,
                       properties: {
-                          lms: {
-                              type: Type.ARRAY,
-                              items: {
-                                  type: Type.OBJECT,
-                                  properties: {
-                                      code: { type: Type.STRING },
-                                      title: { type: Type.STRING }
-                                  }
-                              }
-                          },
                           criteria: {
                               type: Type.ARRAY,
                               items: {
@@ -246,13 +282,7 @@ export const useCurriculumLogic = ({ identity, tps, onUpdateTPs }: UseCurriculum
 
           const json = JSON.parse(response.text || '{}');
           
-          if (json.lms && json.criteria) {
-              const newLms: LearningMaterial[] = json.lms.map((lm: any, idx: number) => ({
-                  id: `gen-lm-${Date.now()}-${idx}`,
-                  code: lm.code || `LM.${tp.lms.length + idx + 1}`,
-                  title: lm.title
-              }));
-
+          if (json.criteria) {
               const newCriteria: AssessmentCriteria[] = json.criteria.map((cr: any, idx: number) => ({
                   id: `gen-cr-${Date.now()}-${idx}`,
                   code: cr.code || `KR.${tp.criteria.length + idx + 1}`,
@@ -264,7 +294,6 @@ export const useCurriculumLogic = ({ identity, tps, onUpdateTPs }: UseCurriculum
                   if (t.id === tp.id) {
                       return {
                           ...t,
-                          lms: [...t.lms, ...newLms],
                           criteria: [...t.criteria, ...newCriteria]
                       };
                   }
@@ -275,7 +304,7 @@ export const useCurriculumLogic = ({ identity, tps, onUpdateTPs }: UseCurriculum
               setExpandedTpId(tp.id);
               Swal.fire({
                   title: 'Generate Berhasil',
-                  text: `Ditambahkan ${newLms.length} Materi dan ${newCriteria.length} Kriteria.`,
+                  text: `Ditambahkan ${newCriteria.length} Kriteria Penilaian.`,
                   icon: 'success',
                   timer: 2000
               });
@@ -297,7 +326,7 @@ export const useCurriculumLogic = ({ identity, tps, onUpdateTPs }: UseCurriculum
     const sheet = workbook.addWorksheet('Kurikulum');
     
     const headerRow = sheet.addRow([
-        'No', 'Semester', 'Mata Pelajaran', 'Lingkup Materi (Scope/Fase)', 'Kelas', 'Tujuan Pembelajaran (TP)', 'Lingkup Materi (LM) Detail'
+        'No', 'Semester', 'Mata Pelajaran', 'Lingkup Materi (Scope)', 'Kelas', 'Tujuan Pembelajaran (TP)', 'Kriteria Ketercapaian (KKTP)'
     ]);
 
     headerRow.eachCell((cell) => {
@@ -311,11 +340,11 @@ export const useCurriculumLogic = ({ identity, tps, onUpdateTPs }: UseCurriculum
     let rowIndex = 1;
 
     filteredTPs.forEach((tp) => {
-        if (tp.lms.length > 0) {
-            tp.lms.forEach(lm => {
+        if (tp.criteria.length > 0) {
+            tp.criteria.forEach(cr => {
                 const row = sheet.addRow([
-                    rowIndex, `Semester ${tp.semester}`, activeSubjectId, activeScopeName, identity.level,
-                    `${tp.code} - ${tp.description}`, `${lm.code} - ${lm.title}`
+                    rowIndex, `Semester ${tp.semester}`, activeSubjectId, tp.scope || 'Umum', activeScopeName,
+                    `${tp.code} - ${tp.description}`, `[${cr.type}] ${cr.description}`
                 ]);
                 row.eachCell((cell) => {
                     cell.border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} };
@@ -324,7 +353,7 @@ export const useCurriculumLogic = ({ identity, tps, onUpdateTPs }: UseCurriculum
             });
         } else {
              const row = sheet.addRow([
-                    rowIndex, `Semester ${tp.semester}`, activeSubjectId, activeScopeName, identity.level,
+                    rowIndex, `Semester ${tp.semester}`, activeSubjectId, tp.scope || 'Umum', activeScopeName,
                     `${tp.code} - ${tp.description}`, '-'
             ]);
             row.eachCell((cell) => {
@@ -345,9 +374,17 @@ export const useCurriculumLogic = ({ identity, tps, onUpdateTPs }: UseCurriculum
     const url = window.URL.createObjectURL(blob);
     const anchor = document.createElement('a');
     anchor.href = url;
-    anchor.download = `Kurikulum_${activeScopeName.replace(/\s/g, '_')}_${activeSubjectId}.xlsx`;
+    anchor.download = `Kurikulum_Kriteria_${activeScopeName.replace(/\s/g, '_')}_${activeSubjectId}.xlsx`;
     anchor.click();
     window.URL.revokeObjectURL(url);
+
+    Swal.fire({
+        title: 'Export Berhasil!',
+        text: 'Data Kurikulum & KKTP telah berhasil diunduh.',
+        icon: 'success',
+        timer: 2000,
+        showConfirmButton: false
+    });
   };
 
   return {
@@ -360,8 +397,10 @@ export const useCurriculumLogic = ({ identity, tps, onUpdateTPs }: UseCurriculum
         newItemType,
         activeScopeId,
         activeSubjectId,
+        isManualSubject,
         scopes,
-        subjectOptions: SUBJECT_OPTIONS
+        subjectOptions,
+        uniqueScopes // Export for autocomplete
     },
     setters: {
         setExpandedTpId,
@@ -373,7 +412,8 @@ export const useCurriculumLogic = ({ identity, tps, onUpdateTPs }: UseCurriculum
         setActiveSubjectId
     },
     computed: {
-        filteredTPs
+        filteredTPs,
+        tpsByScope // Export grouped data
     },
     handlers: {
         handleAddTP,

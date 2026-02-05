@@ -1,18 +1,50 @@
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import ExcelJS from 'exceljs';
 import { Student, Subject, IdentityData, AttendanceData, GradeData, LearningObjective } from '../types';
 import { calculateStudentGrade } from '../utils/grading';
+
+declare const Swal: any;
 
 const MONTH_NAMES = [
     'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
     'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
 ];
 
-const AVAILABLE_SUBJECTS = [
-    { id: 's1', name: 'Matematika - Fase E' },
-    { id: 's2', name: 'Fisika - Fase E' },
-    { id: 's3', name: 'Kimia - Fase E' },
+// ... (Subject Definitions remain same) ...
+// Daftar Mapel SD (Guru Kelas) - ID menggunakan Nama
+const SD_SUBJECTS = [
+    { id: 'Bahasa Indonesia', name: 'Bahasa Indonesia' },
+    { id: 'Matematika', name: 'Matematika' },
+    { id: 'IPAS', name: 'Ilmu Pengetahuan Alam dan Sosial (IPAS)' },
+    { id: 'Pendidikan Pancasila', name: 'Pendidikan Pancasila' },
+    { id: 'Seni Budaya', name: 'Seni Budaya' },
+    { id: 'PJOK', name: 'PJOK' },
+    { id: 'Bahasa Inggris', name: 'Bahasa Inggris' },
+    { id: 'Muatan Lokal', name: 'Muatan Lokal' }
+];
+
+// Daftar Mapel SMP/SMA (Guru Mapel) - ID menggunakan s1, s2, dst (Sesuai GradingSheet)
+const SECONDARY_SUBJECTS = [
+    { id: 's1', name: 'Matematika' },
+    { id: 's2', name: 'Fisika' },
+    { id: 's3', name: 'Kimia' },
+    { id: 's4', name: 'Biologi' },
+    { id: 's5', name: 'Bahasa Indonesia' },
+    { id: 's6', name: 'Bahasa Inggris' },
+    { id: 's7', name: 'Sejarah' },
+    { id: 's8', name: 'Geografi' },
+    { id: 's9', name: 'Sosiologi' },
+    { id: 's10', name: 'Ekonomi' },
+    { id: 's11', name: 'Pendidikan Pancasila' },
+    { id: 's12', name: 'Informatika' },
+    { id: 's13', name: 'PJOK' },
+    { id: 's14', name: 'Seni Budaya' },
+    { id: 's15', name: 'PAI' },
+    { id: 's16', name: 'PAK' },
+    { id: 's17', name: 'BK' },
+    { id: 's18', name: 'IPA' },
+    { id: 's19', name: 'IPS' },
 ];
 
 interface UseRecapLogicProps {
@@ -34,12 +66,32 @@ export const useRecapLogic = ({
   gradeData,
   tps
 }: UseRecapLogicProps) => {
-  // --- STATE ---
+  
+  const availableSubjects = useMemo(() => {
+      if (identity.level === 'SD' || identity.role === 'CLASS_TEACHER') {
+          return SD_SUBJECTS;
+      }
+      return SECONDARY_SUBJECTS;
+  }, [identity.level, identity.role]);
+
+  const defaultSubjectId = useMemo(() => {
+      if (identity.role === 'SUBJECT_TEACHER' && identity.subjectName) {
+          const found = availableSubjects.find(s => s.name.toLowerCase() === identity.subjectName.toLowerCase());
+          return found ? found.id : availableSubjects[0]?.id;
+      }
+      return availableSubjects[0]?.id;
+  }, [identity, availableSubjects]);
+
   const [selectedClass, setSelectedClass] = useState<string>('');
-  const [selectedSubject, setSelectedSubject] = useState<string>(subject.id);
+  const [selectedSubject, setSelectedSubject] = useState<string>(defaultSubjectId);
   const [selectedMonth, setSelectedMonth] = useState<string>(new Date().getMonth().toString());
 
-  // --- COMPUTED ---
+  useEffect(() => {
+      if (defaultSubjectId) {
+          setSelectedSubject(defaultSubjectId);
+      }
+  }, [defaultSubjectId]);
+
   const availableClasses = useMemo(() => {
     const classes = new Set(students.map(s => s.className).filter(Boolean));
     return Array.from(classes).sort() as string[];
@@ -50,28 +102,22 @@ export const useRecapLogic = ({
     return students.filter(s => s.className === selectedClass);
   }, [students, selectedClass]);
 
-  // AGGREGATE REAL DATA
   const reportData = useMemo(() => {
     return filteredStudents.map(student => {
-        // --- ATTENDANCE CALCULATION ---
         let totalStats = { present: 0, permit: 0, sick: 0, absent: 0, meetings: 0 };
         let monthlyStats = { present: 0, permit: 0, sick: 0, absent: 0, meetings: 0 };
 
-        // Iterate through all schedules and dates
         Object.keys(globalAttendance).forEach(schId => {
             const datesObj = globalAttendance[schId];
             Object.keys(datesObj).forEach(dateStr => {
                 const record = datesObj[dateStr][student.id];
-                
                 if (record) {
-                    // 1. Total Accumulation
                     totalStats.meetings++;
                     if (record.status === 'H') totalStats.present++;
                     else if (record.status === 'I') totalStats.permit++;
                     else if (record.status === 'S') totalStats.sick++;
                     else if (record.status === 'A') totalStats.absent++;
 
-                    // 2. Monthly Accumulation (Check Month Index)
                     const recordDate = new Date(dateStr);
                     if (recordDate.getMonth() === parseInt(selectedMonth)) {
                         monthlyStats.meetings++;
@@ -92,7 +138,6 @@ export const useRecapLogic = ({
             ? Math.round((monthlyStats.present / monthlyStats.meetings) * 100)
             : 0;
 
-        // --- REAL GRADES CALCULATION ---
         const gradeResult = calculateStudentGrade(student.id, gradeData, tps, subject.kktp);
         const attitudeScore = gradeData[student.id]?.attitude || 0;
 
@@ -111,17 +156,18 @@ export const useRecapLogic = ({
             }
         };
     });
-  }, [filteredStudents, subject.kktp, globalAttendance, selectedMonth, gradeData, tps]);
+  }, [filteredStudents, subject.kktp, globalAttendance, selectedMonth, gradeData, tps, selectedSubject]);
 
-  // --- HANDLERS ---
   const handleExportExcel = async () => {
     if (reportData.length === 0) return;
 
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet(mode === 'GRADES' ? 'Rekap Nilai' : 'Rekap Presensi');
     const monthName = MONTH_NAMES[parseInt(selectedMonth)];
+    
+    const subjectName = availableSubjects.find(s => s.id === selectedSubject)?.name || 'Mata Pelajaran';
 
-    // 1. Header Information
+    // Header Construction
     sheet.mergeCells('A1:I1');
     sheet.getCell('A1').value = identity.schoolName;
     sheet.getCell('A1').font = { size: 14, bold: true };
@@ -132,35 +178,29 @@ export const useRecapLogic = ({
     sheet.getCell('A2').font = { size: 12, bold: true };
     sheet.getCell('A2').alignment = { horizontal: 'center' };
 
-    sheet.addRow([`Kelas: ${selectedClass}`, '', '', '', `Mapel: ${AVAILABLE_SUBJECTS.find(s => s.id === selectedSubject)?.name || subject.name}`]);
+    sheet.addRow([`Kelas: ${selectedClass}`, '', '', '', `Mapel: ${subjectName}`]);
     sheet.addRow([`Tahun Ajaran: ${identity.academicYear}`, '', '', '', `Semester: ${identity.semester}`]);
     if (mode === 'ATTENDANCE') {
         sheet.addRow([`Bulan Laporan: ${monthName}`, '', '', '', '']);
     }
-    sheet.addRow([]); // Spacer
+    sheet.addRow([]);
 
-    // 2. Table Headers
     let headerRowIndex = 0;
 
     if (mode === 'GRADES') {
         const headerRow = sheet.addRow(['No', 'NIS', 'Nama Siswa', 'Rata-rata Formatif (40%)', 'Rata-rata Sumatif (50%)', 'Nilai Sikap (10%)', 'Nilai Akhir', 'Status', 'Keterangan']);
         headerRowIndex = headerRow.number;
     } else {
-        // Attendance Headers (Double Row)
         const row1 = sheet.addRow(['No', 'NIS', 'Nama Siswa', `Rincian Bulan ${monthName}`, '', '', '', 'Total Akumulasi', '']);
         const row2 = sheet.addRow(['', '', '', 'Hadir (H)', 'Izin (I)', 'Sakit (S)', 'Alfa (A)', 'Total Tatap Muka', 'Persentase (%)']);
-        
         headerRowIndex = row1.number;
-        
-        // Merging Header Cells
-        sheet.mergeCells(`A${headerRowIndex}:A${headerRowIndex+1}`); // No
-        sheet.mergeCells(`B${headerRowIndex}:B${headerRowIndex+1}`); // NIS
-        sheet.mergeCells(`C${headerRowIndex}:C${headerRowIndex+1}`); // Nama
-        sheet.mergeCells(`D${headerRowIndex}:G${headerRowIndex}`);   // Month Group
-        sheet.mergeCells(`H${headerRowIndex}:I${headerRowIndex}`);   // Total Group
+        sheet.mergeCells(`A${headerRowIndex}:A${headerRowIndex+1}`);
+        sheet.mergeCells(`B${headerRowIndex}:B${headerRowIndex+1}`);
+        sheet.mergeCells(`C${headerRowIndex}:C${headerRowIndex+1}`);
+        sheet.mergeCells(`D${headerRowIndex}:G${headerRowIndex}`);
+        sheet.mergeCells(`H${headerRowIndex}:I${headerRowIndex}`);
     }
 
-    // 3. Styling Headers
     const headerRow = sheet.getRow(headerRowIndex);
     const subHeaderRow = mode === 'ATTENDANCE' ? sheet.getRow(headerRowIndex + 1) : null;
     
@@ -168,13 +208,12 @@ export const useRecapLogic = ({
         if(!row) return;
         row.eachCell((cell) => {
             cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF137FEC' } }; // Primary Blue
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF137FEC' } };
             cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
             cell.border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} };
         });
     });
 
-    // 4. Data Rows
     reportData.forEach((d, i) => {
         let rowValues = [];
         if (mode === 'GRADES') {
@@ -194,8 +233,6 @@ export const useRecapLogic = ({
         }
         
         const row = sheet.addRow(rowValues);
-        
-        // Data Borders & Alignment
         row.eachCell((cell, colNumber) => {
             cell.border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} };
             if (colNumber === 1 || colNumber > 3) {
@@ -203,27 +240,23 @@ export const useRecapLogic = ({
             }
         });
 
-        // Conditional Formatting for Status
         if (mode === 'GRADES') {
             const statusCell = row.getCell(8);
             statusCell.font = { bold: true, color: { argb: d.grades.isPassed ? 'FF008000' : 'FFFF0000' } };
         }
-        // Conditional Formatting for Percentage
         if (mode === 'ATTENDANCE') {
             const percentCell = row.getCell(9);
              if (d.attendance.total.percentage < 50) {
-                 percentCell.font = { color: { argb: 'FFFF0000' }, bold: true }; // Red text for low attendance
+                 percentCell.font = { color: { argb: 'FFFF0000' }, bold: true };
              }
         }
     });
 
-    // 5. Column Widths
     sheet.columns.forEach((col, index) => {
-        if (index === 2) col.width = 35; // Name
+        if (index === 2) col.width = 35;
         else col.width = 15;
     });
 
-    // 6. Download Trigger
     const buffer = await workbook.xlsx.writeBuffer();
     const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     const url = window.URL.createObjectURL(blob);
@@ -232,10 +265,19 @@ export const useRecapLogic = ({
     anchor.download = `Rekap_${mode}_${selectedClass}_${monthName}.xlsx`;
     anchor.click();
     window.URL.revokeObjectURL(url);
+
+    // SWAL ALERT ADDED HERE
+    Swal.fire({
+        title: 'Export Berhasil!',
+        text: 'File Excel telah berhasil diunduh.',
+        icon: 'success',
+        timer: 2000,
+        showConfirmButton: false
+    });
   };
 
   return {
-      state: { selectedClass, selectedSubject, selectedMonth, monthNames: MONTH_NAMES, availableSubjects: AVAILABLE_SUBJECTS },
+      state: { selectedClass, selectedSubject, selectedMonth, monthNames: MONTH_NAMES, availableSubjects },
       setters: { setSelectedClass, setSelectedSubject, setSelectedMonth },
       computed: { availableClasses, filteredStudents, reportData },
       handlers: { handleExportExcel }
