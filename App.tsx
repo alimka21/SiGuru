@@ -181,6 +181,7 @@ const AppContent = () => {
       setGradeData({});
       setJournals([]);
       setIsLoadingAuth(false);
+      localStorage.clear(); // Clear Local Storage
       sessionStorage.clear();
       navigate('/login');
   };
@@ -201,7 +202,8 @@ const AppContent = () => {
 
   const loadUserData = (user: User) => {
         const storageKey = `siguru_data_${user.email}`;
-        const savedDataStr = sessionStorage.getItem(storageKey);
+        // Changed to localStorage to persist across sessions
+        const savedDataStr = localStorage.getItem(storageKey);
         let dataLoaded = false;
 
         if (savedDataStr) {
@@ -240,7 +242,8 @@ const AppContent = () => {
     if (!currentUser) return;
     const storageKey = `siguru_data_${currentUser.email}`;
     const payload: UserStorageData = { identity, students, classes, schedules, tps, subject, attendanceData, gradeData, journals };
-    sessionStorage.setItem(storageKey, JSON.stringify(payload));
+    // Changed to localStorage to persist data
+    localStorage.setItem(storageKey, JSON.stringify(payload));
   }, [currentUser, identity, students, classes, schedules, tps, subject, attendanceData, gradeData, journals]);
 
   useEffect(() => {

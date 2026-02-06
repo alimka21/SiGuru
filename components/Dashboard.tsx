@@ -155,7 +155,9 @@ export const Dashboard: React.FC<Props> = (props) => {
       setSetupData(prev => ({
           ...prev,
           role,
-          level: role === 'CLASS_TEACHER' ? 'SD' : 'SMP' // Default switch
+          // Tidak lagi memaksa pindah ke SMP jika Guru Mapel, 
+          // Default tetap SD jika sebelumnya Guru Kelas (yang pasti SD) atau biarkan user pilih.
+          level: role === 'CLASS_TEACHER' ? 'SD' : prev.level 
       }));
   };
 
@@ -237,7 +239,7 @@ export const Dashboard: React.FC<Props> = (props) => {
                                       <span className="material-symbols-outlined text-primary">menu_book</span>
                                       Guru Mapel
                                   </div>
-                                  <p className="text-xs text-slate-500">Mengajar 1 mapel di banyak kelas (SMP/SMA).</p>
+                                  <p className="text-xs text-slate-500">Mengajar 1 mapel (SD/SMP/SMA).</p>
                               </div>
                               <div 
                                   onClick={() => handleRoleChange('CLASS_TEACHER')}

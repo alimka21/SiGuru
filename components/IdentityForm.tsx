@@ -108,7 +108,7 @@ export const IdentityForm: React.FC<Props> = ({ data, onSave, onBack }) => {
                     <strong>Guru Kelas:</strong> Mengajar banyak mata pelajaran untuk satu kelas (Sistem SD).
                 </p>
                 <p className="text-xs text-blue-700 leading-relaxed">
-                    <strong>Guru Mapel:</strong> Mengajar satu mata pelajaran untuk banyak tingkatan kelas (Sistem SMP/SMA).
+                    <strong>Guru Mapel:</strong> Mengajar satu mata pelajaran untuk banyak tingkatan kelas (SD/SMP/SMA).
                 </p>
             </div>
         </div>
@@ -155,7 +155,7 @@ export const IdentityForm: React.FC<Props> = ({ data, onSave, onBack }) => {
                                                 className="text-primary focus:ring-primary"
                                             />
                                         </div>
-                                        <p className="text-xs text-slate-500">Saya mengajar satu mapel di berbagai kelas (SMP/SMA).</p>
+                                        <p className="text-xs text-slate-500">Saya mengajar satu mapel di berbagai kelas (SD/SMP/SMA).</p>
                                     </label>
                                 </div>
                             </div>
@@ -235,12 +235,8 @@ export const IdentityForm: React.FC<Props> = ({ data, onSave, onBack }) => {
                                     className="w-full rounded-lg border-slate-200 focus:ring-2 focus:ring-primary focus:border-transparent text-sm font-bold text-slate-900 cursor-pointer disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
                                 >
                                     <option value="SD">SD/MI Sederajat</option>
-                                    {formData.role !== 'CLASS_TEACHER' && (
-                                        <>
-                                            <option value="SMP">SMP/MTs Sederajat</option>
-                                            <option value="SMA">SMA/SMK/MA Sederajat</option>
-                                        </>
-                                    )}
+                                    <option value="SMP">SMP/MTs Sederajat</option>
+                                    <option value="SMA">SMA/SMK/MA Sederajat</option>
                                 </select>
                                 {formData.role === 'CLASS_TEACHER' && (
                                     <p className="text-[10px] text-orange-500 mt-1">*Guru Kelas otomatis diset jenjang SD</p>

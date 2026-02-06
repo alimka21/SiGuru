@@ -350,9 +350,7 @@ export const CPGenerator: React.FC<Props> = ({ onSave, onBack, identity }) => {
                                 </>
                             )}
                         </button>
-                        <button onClick={onBack} className="w-full py-2 text-slate-400 hover:text-slate-600 font-bold text-xs border border-transparent hover:border-slate-200 rounded-lg transition-all">
-                            Kembali ke Menu
-                        </button>
+                        {/* Tombol 'Kembali ke Menu' dihapus sesuai permintaan */}
                     </div>
                 </div>
             </div>
