@@ -1,8 +1,8 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useLocation } from 'react-router-dom';
 import { Student, LearningObjective, GradeData, Subject, IdentityData, SUBJECTS_DATA } from '../types';
 import { calculateStudentGrade } from '../utils/grading';
+import { supabase } from '../utils/supabase';
 
 interface UseGradingLogicProps {
   students: Student[];
@@ -23,57 +23,70 @@ export const useGradingLogic = ({
   setGlobalGradeData,
   identity
 }: UseGradingLogicProps) => {
-  const location = useLocation();
-
-  // --- STATE ---
+  
   const [activeTab, setActiveTab] = useState<'FORMATIVE' | 'SUMMATIVE'>('FORMATIVE');
   const [currentTime, setCurrentTime] = useState(new Date());
   
-  // Filters
   const [selectedClass, setSelectedClass] = useState<string>('');
   const [selectedSubject, setSelectedSubject] = useState<string>('');
-  const [selectedSemester, setSelectedSemester] = useState<string>('1'); // Default Semester
-  
-  // KKTP State (Dynamic Parameter)
+  const [selectedSemester, setSelectedSemester] = useState<string>('1');
   const [currentKktp, setCurrentKktp] = useState<number>(75);
 
-  // --- EFFECTS ---
-  
-  // 1. Initialize Class
-  useEffect(() => {
-    if (initialClass) setSelectedClass(initialClass);
-  }, [initialClass]);
-
-  // 2. Initialize & Lock Subject based on Identity
-  useEffect(() => {
-      if (identity.role === 'SUBJECT_TEACHER' && identity.subjectName) {
-          setSelectedSubject(identity.subjectName);
-      } else if (!selectedSubject) {
-          // Default fallback for Class Teacher
-          if (identity.level === 'SD') {
-              setSelectedSubject(SUBJECTS_DATA.SD.CLASS_TEACHER[0]);
-          } else if (identity.level === 'SMP') {
-              setSelectedSubject(SUBJECTS_DATA.SMP[0]);
-          } else {
-              setSelectedSubject(SUBJECTS_DATA.SMA_SMK[0]);
-          }
-      }
-  }, [identity, selectedSubject]);
-
-  // 3. Initialize Semester from Identity (Active Context)
+  // --- INITIALIZATION ---
+  useEffect(() => { if (initialClass) setSelectedClass(initialClass); }, [initialClass]);
   useEffect(() => {
       const activeSem = identity.semester === 'Genap' || identity.semester === '2' ? '2' : '1';
       setSelectedSemester(activeSem);
   }, [identity.semester]);
 
-  // 4. Time Interval
+  // --- FETCH DATA FROM SUPABASE (ADAPTER) ---
   useEffect(() => {
-    const interval = setInterval(() => setCurrentTime(new Date()), 60000);
-    return () => clearInterval(interval);
-  }, []);
+      if (!selectedClass || students.length === 0) return;
+
+      const fetchGrades = async () => {
+          // 1. Find Student IDs in this class
+          const classStudentIds = students.filter(s => s.className === selectedClass).map(s => s.id);
+          if (classStudentIds.length === 0) return;
+
+          // 2. Fetch Formative Grades
+          const { data: formGrades } = await supabase
+              .from('grade_formative')
+              .select('*')
+              .in('student_id', classStudentIds);
+
+          // 3. Fetch Summative Grades
+          const { data: sumGrades } = await supabase
+              .from('grade_summative')
+              .select('*')
+              .in('student_id', classStudentIds);
+
+          // 4. Transform to UI GradeData Structure
+          const newGradeData: GradeData = { ...globalGradeData };
+
+          classStudentIds.forEach(sid => {
+              if (!newGradeData[sid]) newGradeData[sid] = { formative: {}, summative: {}, attitude: 0 };
+          });
+
+          formGrades?.forEach((g: any) => {
+              if (newGradeData[g.student_id]) {
+                  newGradeData[g.student_id].formative[g.tp_id] = g.score;
+              }
+          });
+
+          sumGrades?.forEach((g: any) => {
+              if (newGradeData[g.student_id]) {
+                  // Assuming scope_name is unique per subject
+                  newGradeData[g.student_id].summative[g.scope_name] = g.score;
+              }
+          });
+
+          setGlobalGradeData(newGradeData);
+      };
+
+      fetchGrades();
+  }, [selectedClass, students]); // Re-fetch when class changes
 
   // --- COMPUTED ---
-
   const availableClasses = useMemo(() => {
       const classes = new Set(students.map(s => s.className).filter(Boolean));
       return Array.from(classes).sort() as string[];
@@ -84,7 +97,6 @@ export const useGradingLogic = ({
       return students.filter(s => s.className === selectedClass).sort((a,b) => a.name.localeCompare(b.name));
   }, [students, selectedClass]);
 
-  // Filter TPs based on Subject AND Semester
   const filteredTPs = useMemo(() => {
       if (!selectedSubject) return [];
       return tps.filter(tp => 
@@ -95,9 +107,7 @@ export const useGradingLogic = ({
 
   const uniqueScopes = useMemo(() => {
       const scopes = new Set<string>();
-      filteredTPs.forEach(tp => {
-          scopes.add(tp.scope || 'Materi Umum');
-      });
+      filteredTPs.forEach(tp => scopes.add(tp.scope || 'Materi Umum'));
       return Array.from(scopes).sort();
   }, [filteredTPs]);
 
@@ -111,7 +121,6 @@ export const useGradingLogic = ({
       return grouped;
   }, [filteredTPs]);
 
-  // Stats Calculation uses dynamic currentKktp and correctly filtered TPs
   const stats = useMemo(() => {
       return filteredStudents.reduce((acc, student) => {
           const res = calculateStudentGrade(student.id, globalGradeData, filteredTPs, currentKktp);
@@ -122,11 +131,42 @@ export const useGradingLogic = ({
       }, { tuntas: 0, remedial: 0 });
   }, [filteredStudents, globalGradeData, filteredTPs, currentKktp]);
 
-  // --- HANDLERS ---
+  // --- HANDLERS (UPSERT TO DB) ---
 
-  const handleFormativeScore = useCallback((studentId: string, tpId: string, value: string) => {
+  const handleFormativeScore = useCallback(async (studentId: string, tpId: string, value: string) => {
       const numValue = value === '' ? undefined : parseFloat(value);
-      
+      if (numValue !== undefined && (numValue < 0 || numValue > 100)) return;
+
+      // 1. Optimistic Update
+      setGlobalGradeData(prev => {
+          const sData = prev[studentId] || { formative: {}, summative: {}, attitude: 0 };
+          return {
+              ...prev,
+              [studentId]: {
+                  ...sData,
+                  formative: { ...(sData.formative || {}), [tpId]: numValue !== undefined ? numValue : 0 }
+              }
+          };
+      });
+
+      // 2. DB Update (Upsert)
+      if (numValue !== undefined) {
+          await supabase.from('grade_formative').upsert({
+              student_id: studentId,
+              tp_id: tpId,
+              score: numValue,
+              updated_at: new Date()
+          }, { onConflict: 'student_id, tp_id' });
+      } else {
+          // If cleared, delete? Or set to 0? For now keep row with 0/null or delete
+          // Deleting is cleaner for "empty" state
+          await supabase.from('grade_formative').delete().match({ student_id: studentId, tp_id: tpId });
+      }
+
+  }, [setGlobalGradeData]);
+
+  const handleSummativeScore = useCallback(async (studentId: string, scopeName: string, value: string) => {
+      const numValue = value === '' ? undefined : parseFloat(value);
       if (numValue !== undefined && (numValue < 0 || numValue > 100)) return;
 
       setGlobalGradeData(prev => {
@@ -135,64 +175,27 @@ export const useGradingLogic = ({
               ...prev,
               [studentId]: {
                   ...sData,
-                  formative: {
-                      ...(sData.formative || {}),
-                      [tpId]: numValue !== undefined ? numValue : 0
-                  }
+                  summative: { ...(sData.summative || {}), [scopeName]: numValue !== undefined ? numValue : 0 }
               }
           };
       });
-  }, [setGlobalGradeData]);
 
-  const handleSummativeScore = useCallback((studentId: string, scopeName: string, value: string) => {
-      const numValue = value === '' ? undefined : parseFloat(value);
-      
-      if (numValue !== undefined && (numValue < 0 || numValue > 100)) {
-          return; 
+      // DB Update
+      if (numValue !== undefined) {
+          await supabase.from('grade_summative').upsert({
+              student_id: studentId,
+              subject_name: selectedSubject, // Need Subject Name here for constraint
+              scope_name: scopeName,
+              score: numValue,
+              updated_at: new Date()
+          }, { onConflict: 'student_id, subject_name, scope_name' });
       }
-
-      setGlobalGradeData(prev => {
-          const sData = prev[studentId] || { formative: {}, summative: {}, attitude: 0 };
-          return {
-              ...prev,
-              [studentId]: {
-                  ...sData,
-                  summative: {
-                      ...(sData.summative || {}),
-                      [scopeName]: numValue !== undefined ? numValue : 0
-                  }
-              }
-          };
-      });
-  }, [setGlobalGradeData]);
+  }, [setGlobalGradeData, selectedSubject]);
 
   return {
-    state: {
-      activeTab,
-      currentTime,
-      selectedClass,
-      selectedSubject,
-      selectedSemester, // Exposed
-      currentKktp
-    },
-    setters: {
-      setActiveTab,
-      setSelectedClass,
-      setSelectedSubject,
-      setSelectedSemester, // Exposed
-      setCurrentKktp
-    },
-    computed: {
-      availableClasses,
-      filteredStudents,
-      uniqueScopes,
-      tpsByScope, 
-      stats,
-      filteredTPs
-    },
-    handlers: {
-      handleFormativeScore,
-      handleSummativeScore
-    }
+    state: { activeTab, currentTime, selectedClass, selectedSubject, selectedSemester, currentKktp },
+    setters: { setActiveTab, setSelectedClass, setSelectedSubject, setSelectedSemester, setCurrentKktp },
+    computed: { availableClasses, filteredStudents, uniqueScopes, tpsByScope, stats, filteredTPs },
+    handlers: { handleFormativeScore, handleSummativeScore }
   };
 };
