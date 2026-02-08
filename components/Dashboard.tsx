@@ -1,12 +1,12 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { TabView, IdentityData, ScheduleItem, ClassInfo, Student, AttendanceData, GradeData, Subject, LearningObjective, TeacherRole, SchoolLevel } from '../types';
+import { TabView, IdentityData, ScheduleItem, ClassInfo, Student, AttendanceData, GradeData, Subject, LearningObjective, TeacherRole, SchoolLevel, CalendarEvent } from '../types';
 import { useDashboardLogic } from '../hooks/useDashboardLogic';
 
 declare const Swal: any;
 
 interface Props {
-  onNavigate: (tab: TabView, context?: { className?: string, scheduleId?: string }) => void;
+  onNavigate: (tab: TabView, context?: { className?: string, scheduleId?: string, targetDate?: string }) => void;
   identity: IdentityData;
   schedules: ScheduleItem[];
   classes: ClassInfo[];
@@ -15,6 +15,7 @@ interface Props {
   gradeData: GradeData;
   subject: Subject;
   tps: LearningObjective[];
+  calendarEvents?: CalendarEvent[]; // Added calendar events prop
   // Callback untuk menyimpan identity dari modal dashboard
   onSaveIdentity?: (data: IdentityData) => void;
 }
@@ -128,6 +129,23 @@ export const Dashboard: React.FC<Props> = (props) => {
 
   const { currentTime } = state;
   const { dateString, todaysSchedules, averageGrade, attendanceStats } = computed;
+
+  // --- CALENDAR TODAY LOGIC ---
+  const todaysEvents = useMemo(() => {
+      if (!props.calendarEvents) return [];
+      const todayStr = new Date().toISOString().split('T')[0];
+      return props.calendarEvents.filter(e => e.date === todayStr);
+  }, [props.calendarEvents]);
+
+  // Helper for Event Styling in Dashboard Panel
+  const getEventStyle = (type: string) => {
+      switch (type) {
+          case 'HOLIDAY': return { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200', icon: 'beach_access', label: 'Hari Libur' };
+          case 'EXAM': return { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200', icon: 'assignment', label: 'Ujian' };
+          case 'MEETING': return { bg: 'bg-orange-50', text: 'text-orange-700', border: 'border-orange-200', icon: 'groups', label: 'Rapat' };
+          default: return { bg: 'bg-slate-50', text: 'text-slate-700', border: 'border-slate-200', icon: 'event_note', label: 'Kegiatan' };
+      }
+  };
 
   // --- ONBOARDING LOGIC ---
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -362,6 +380,59 @@ export const Dashboard: React.FC<Props> = (props) => {
             </div>
          </div>
       </div>
+
+      {/* --- PANEL INFORMASI AGENDA HARI INI (UPDATED) --- */}
+      {todaysEvents.length > 0 && (
+        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm animate-in fade-in slide-in-from-top-4 relative overflow-hidden">
+            {/* Decoration */}
+            <div className="absolute top-0 right-0 w-32 h-32 bg-yellow-50 rounded-full blur-2xl -translate-y-1/2 translate-x-1/3 pointer-events-none"></div>
+
+            <div className="flex flex-col md:flex-row gap-6 relative z-10">
+                {/* Left: Heading */}
+                <div className="md:w-1/4 flex flex-col justify-center border-r border-slate-100 pr-6">
+                    <div className="inline-flex items-center gap-2 text-yellow-600 mb-2">
+                        <span className="material-symbols-outlined filled">notifications_active</span>
+                        <span className="text-xs font-bold uppercase tracking-wider">Reminder</span>
+                    </div>
+                    <h3 className="text-xl font-extrabold text-slate-800 leading-tight">Agenda<br/>Hari Ini</h3>
+                    <p className="text-sm text-slate-500 mt-2">
+                        Anda memiliki <strong className="text-slate-900">{todaysEvents.length} agenda</strong> terdaftar di kalender pendidikan.
+                    </p>
+                    <button 
+                        onClick={() => props.onNavigate(TabView.CALENDAR, { targetDate: new Date().toISOString().split('T')[0] })}
+                        className="mt-4 text-sm font-bold text-primary hover:text-blue-700 flex items-center gap-1 transition-colors"
+                    >
+                        Lihat Kalender <span className="material-symbols-outlined text-sm">arrow_forward</span>
+                    </button>
+                </div>
+
+                {/* Right: List of Events */}
+                <div className="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {todaysEvents.map(ev => {
+                        const style = getEventStyle(ev.type);
+                        return (
+                            <div key={ev.id} className={`flex items-start gap-4 p-4 rounded-xl border ${style.bg} ${style.border} transition-transform hover:scale-[1.01]`}>
+                                <div className={`p-2.5 rounded-lg bg-white/60 shadow-sm ${style.text}`}>
+                                    <span className="material-symbols-outlined">{style.icon}</span>
+                                </div>
+                                <div className="flex-1 overflow-hidden">
+                                    <div className="flex justify-between items-start mb-1">
+                                        <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-white/50 ${style.text}`}>
+                                            {style.label}
+                                        </span>
+                                    </div>
+                                    <h4 className={`font-bold text-sm ${style.text} truncate`}>{ev.title}</h4>
+                                    {ev.description && (
+                                        <p className="text-xs text-slate-600 mt-1 opacity-90 line-clamp-2">{ev.description}</p>
+                                    )}
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+        </div>
+      )}
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">

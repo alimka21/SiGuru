@@ -102,7 +102,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ identity, currentUser, o
 
             <NavItem collapsed={isSidebarCollapsed} to="/akademik/journal" label="Jurnal Guru" icon="edit_note" />
             
-            {/* UPDATED GRADING MENU */}
             <NavItem 
                 collapsed={isSidebarCollapsed} 
                 to="/akademik/grading" 
@@ -111,6 +110,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ identity, currentUser, o
             />
 
             <NavItem collapsed={isSidebarCollapsed} to="/akademik/attendance" label="Presensi" icon="how_to_reg" />
+            <NavItem collapsed={isSidebarCollapsed} to="/akademik/calendar" label="Kalender Pendidikan" icon="event" /> {/* Added */}
             
             <div className="my-2 border-t border-slate-100"></div>
             {!isSidebarCollapsed ? <p className="px-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 mt-2">Laporan</p> : <div className="h-4"></div>}

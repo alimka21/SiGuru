@@ -20,11 +20,12 @@ const ScheduleManager = React.lazy(() => import('./components/ScheduleManager').
 const CPGenerator = React.lazy(() => import('./components/CPGenerator').then(module => ({ default: module.CPGenerator })));
 const RecapManager = React.lazy(() => import('./components/RecapManager').then(m => ({ default: m.RecapManager })));
 const JournalManager = React.lazy(() => import('./components/JournalManager').then(m => ({ default: m.JournalManager })));
+const CalendarManager = React.lazy(() => import('./components/CalendarManager').then(m => ({ default: m.CalendarManager }))); // NEW
 const AdminPanel = React.lazy(() => import('./components/AdminPanel').then(m => ({ default: m.AdminPanel })));
 
 import { 
   Student, LearningObjective, Subject, IdentityData, 
-  ScheduleItem, AttendanceData, ClassInfo, GradeData, User, UserStorageData, JournalEntry, TabView
+  ScheduleItem, AttendanceData, GradeData, User, UserStorageData, JournalEntry, CalendarEvent, TabView, ClassInfo
 } from './types';
 
 declare const Swal: any;
@@ -85,6 +86,7 @@ const AppContent = () => {
   const [attendanceData, setAttendanceData] = useState<AttendanceData>({});
   const [gradeData, setGradeData] = useState<GradeData>({}); 
   const [journals, setJournals] = useState<JournalEntry[]>([]); 
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]); // NEW STATE
 
   // --- AUTH EFFECTS ---
   useEffect(() => {
@@ -180,6 +182,7 @@ const AppContent = () => {
       setAttendanceData({});
       setGradeData({});
       setJournals([]);
+      setCalendarEvents([]);
       setIsLoadingAuth(false);
       localStorage.clear(); // Clear Local Storage
       sessionStorage.clear();
@@ -219,6 +222,7 @@ const AppContent = () => {
                 setAttendanceData(data.attendanceData || {});
                 setGradeData(data.gradeData || {});
                 setJournals(data.journals || []);
+                setCalendarEvents(data.calendarEvents || []); // Load events
                 dataLoaded = true;
             } 
           } catch (e) { console.error("Failed to parse saved data", e); }
@@ -241,10 +245,11 @@ const AppContent = () => {
   const saveDataToStorage = useCallback(() => {
     if (!currentUser) return;
     const storageKey = `siguru_data_${currentUser.email}`;
-    const payload: UserStorageData = { identity, students, classes, schedules, tps, subject, attendanceData, gradeData, journals };
+    // Include calendarEvents
+    const payload: UserStorageData = { identity, students, classes, schedules, tps, subject, attendanceData, gradeData, journals, calendarEvents };
     // Changed to localStorage to persist data
     localStorage.setItem(storageKey, JSON.stringify(payload));
-  }, [currentUser, identity, students, classes, schedules, tps, subject, attendanceData, gradeData, journals]);
+  }, [currentUser, identity, students, classes, schedules, tps, subject, attendanceData, gradeData, journals, calendarEvents]);
 
   useEffect(() => {
     if (currentUser) {
@@ -319,7 +324,7 @@ const AppContent = () => {
   }, [navigate]);
 
   // Context Navigation Wrapper
-  const handleContextNavigate = (tab: TabView, context: { className?: string, scheduleId?: string } = {}) => {
+  const handleContextNavigate = (tab: TabView, context: { className?: string, scheduleId?: string, targetDate?: string } = {}) => {
       // Logic to map legacy TabView to Routes (mostly for Dashboard widgets)
       if (tab === TabView.ATTENDANCE) {
           navigate('/akademik/attendance', { state: context });
@@ -327,6 +332,8 @@ const AppContent = () => {
           navigate('/akademik/journal', { state: context });
       } else if (tab === TabView.GRADING) {
           navigate('/akademik/grading', { state: context });
+      } else if (tab === TabView.CALENDAR) {
+          navigate('/akademik/calendar', { state: context }); // Add handler for Calendar
       } else {
           // Default fallbacks handled by Sidebar links mostly
           console.log("Navigating to:", tab, context);
@@ -396,7 +403,8 @@ const AppContent = () => {
                     onNavigate={handleContextNavigate} identity={identity} schedules={schedules}
                     classes={classes} students={students} attendanceData={attendanceData}
                     gradeData={gradeData} subject={subject} tps={tps}
-                    onSaveIdentity={handleIdentitySave} // Pass callback for onboarding
+                    calendarEvents={calendarEvents} // Pass calendar events
+                    onSaveIdentity={handleIdentitySave} 
                 />
             } />
             
@@ -437,6 +445,9 @@ const AppContent = () => {
                 } />
                 <Route path="attendance" element={
                     <AttendanceSheet students={students} subject={subject} schedules={schedules} globalAttendance={attendanceData} setGlobalAttendance={setAttendanceData} />
+                } />
+                <Route path="calendar" element={
+                    <CalendarManager events={calendarEvents} onUpdateEvents={setCalendarEvents} onBack={() => navigate('/dashboard')} />
                 } />
             </Route>
 

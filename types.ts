@@ -4,6 +4,7 @@
 export type TeacherRole = 'CLASS_TEACHER' | 'SUBJECT_TEACHER' | 'ADMIN'; 
 export type SchoolLevel = 'SD' | 'SMP' | 'SMA' | 'SMK'; 
 export type AssessmentType = 'FORMATIVE' | 'SUMMATIVE'; // Added Type
+export type EventType = 'HOLIDAY' | 'EXAM' | 'MEETING' | 'OTHER'; // New Event Type
 
 // AUTH TYPES
 export interface User {
@@ -17,6 +18,15 @@ export interface User {
   password?: string; // Added: Plain Text Password for Admin View
 }
 
+// CALENDAR EVENT TYPE
+export interface CalendarEvent {
+  id: string;
+  title: string;
+  date: string; // ISO Date YYYY-MM-DD
+  description?: string;
+  type: EventType;
+}
+
 // STORAGE WRAPPER 
 export interface UserStorageData {
   identity: IdentityData;
@@ -28,6 +38,7 @@ export interface UserStorageData {
   attendanceData: AttendanceData;
   gradeData: GradeData;
   journals: JournalEntry[]; 
+  calendarEvents: CalendarEvent[]; // Added calendar events
 }
 
 export interface Student {
@@ -165,5 +176,6 @@ export enum TabView {
   ATTENDANCE = 'ATTENDANCE',
   RECAP_GRADES = 'RECAP_GRADES',      
   RECAP_ATTENDANCE = 'RECAP_ATTENDANCE',
-  JOURNAL = 'JOURNAL' 
+  JOURNAL = 'JOURNAL',
+  CALENDAR = 'CALENDAR' // New Tab
 }
