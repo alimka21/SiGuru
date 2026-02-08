@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Student, Subject, AttendanceData, AttendanceStatus, ScheduleItem } from '../types';
+import { Student, Subject, AttendanceData, AttendanceStatus, ScheduleItem, IdentityData } from '../types';
 import { useAttendanceLogic } from '../hooks/useAttendanceLogic';
 
 interface Props {
@@ -11,6 +11,7 @@ interface Props {
   initialScheduleId?: string;
   globalAttendance: AttendanceData;
   setGlobalAttendance: React.Dispatch<React.SetStateAction<AttendanceData>>;
+  identity?: IdentityData; // Pass identity
 }
 
 export const AttendanceSheet: React.FC<Props> = (props) => {
@@ -22,14 +23,16 @@ export const AttendanceSheet: React.FC<Props> = (props) => {
   } = useAttendanceLogic(props);
 
   const { currentSessionData, selectedClass, selectedScheduleId, selectedDate } = state;
-  const { availableClasses, availableSchedules, filteredStudents, generatedDates, isSaved } = computed;
+  const { availableClasses, availableSchedules, filteredStudents, generatedDates, isSaved, isClassTeacher } = computed;
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
        {/* Header */}
        <div className="flex flex-col gap-1">
           <h2 className="text-slate-900 text-3xl font-extrabold tracking-tight">Presensi Kelas</h2>
-          <p className="text-slate-500 text-base font-normal">Catat kehadiran rutin berdasarkan jadwal.</p>
+          <p className="text-slate-500 text-base font-normal">
+              {isClassTeacher ? 'Catat kehadiran harian siswa (Guru Kelas).' : 'Catat kehadiran berdasarkan jadwal mata pelajaran.'}
+          </p>
       </div>
 
       {/* Control Panel */}
@@ -58,34 +61,36 @@ export const AttendanceSheet: React.FC<Props> = (props) => {
                 </div>
             </div>
 
-            {/* Schedule Selector */}
-            <div className="space-y-2">
-                <label className="text-sm font-bold text-slate-700">Pilih Jadwal Mata Pelajaran</label>
-                <div className="relative">
-                     <select 
-                        className="w-full appearance-none rounded-lg border-slate-200 bg-slate-50 py-3 px-4 text-sm font-bold text-slate-900 focus:border-primary focus:ring-2 focus:ring-primary/20 cursor-pointer disabled:opacity-50"
-                        value={selectedScheduleId}
-                        onChange={(e) => {
-                            setters.setSelectedScheduleId(e.target.value);
-                            setters.setSelectedDate('');
-                        }}
-                        disabled={!selectedClass}
-                    >
-                        <option value="">-- Pilih Jadwal --</option>
-                        {availableSchedules.map(sch => (
-                            <option key={sch.id} value={sch.id}>
-                                {sch.day} {sch.startTime} - {sch.subject} ({sch.room})
-                            </option>
-                        ))}
-                    </select>
-                    <span className="material-symbols-outlined absolute right-4 top-3 text-slate-400 pointer-events-none">expand_more</span>
+            {/* Schedule Selector - ONLY FOR SUBJECT TEACHER */}
+            {!isClassTeacher && (
+                <div className="space-y-2">
+                    <label className="text-sm font-bold text-slate-700">Pilih Jadwal Mata Pelajaran</label>
+                    <div className="relative">
+                        <select 
+                            className="w-full appearance-none rounded-lg border-slate-200 bg-slate-50 py-3 px-4 text-sm font-bold text-slate-900 focus:border-primary focus:ring-2 focus:ring-primary/20 cursor-pointer disabled:opacity-50"
+                            value={selectedScheduleId}
+                            onChange={(e) => {
+                                setters.setSelectedScheduleId(e.target.value);
+                                setters.setSelectedDate('');
+                            }}
+                            disabled={!selectedClass}
+                        >
+                            <option value="">-- Pilih Jadwal --</option>
+                            {availableSchedules.map(sch => (
+                                <option key={sch.id} value={sch.id}>
+                                    {sch.day} {sch.startTime} - {sch.subject} ({sch.room})
+                                </option>
+                            ))}
+                        </select>
+                        <span className="material-symbols-outlined absolute right-4 top-3 text-slate-400 pointer-events-none">expand_more</span>
+                    </div>
                 </div>
-            </div>
+            )}
 
             {/* Routine Date Selector */}
             <div className="space-y-2">
                 <label className="text-sm font-bold text-slate-700 flex justify-between">
-                    <span>Tanggal Pertemuan</span>
+                    <span>Tanggal {isClassTeacher ? 'Harian' : 'Pertemuan'}</span>
                     {selectedDate && (
                          <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase ${isSaved(selectedDate) ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
                              {isSaved(selectedDate) ? 'Tersimpan' : 'Draft / Baru'}
@@ -102,9 +107,9 @@ export const AttendanceSheet: React.FC<Props> = (props) => {
                         `}
                         value={selectedDate}
                         onChange={(e) => setters.setSelectedDate(e.target.value)}
-                        disabled={!selectedScheduleId}
+                        disabled={!selectedClass || (!isClassTeacher && !selectedScheduleId)}
                     >
-                        <option value="">-- Pilih Tanggal Rutinitas --</option>
+                        <option value="">-- Pilih Tanggal --</option>
                         {generatedDates.map(date => {
                             const saved = isSaved(date);
                             const label = new Date(date).toLocaleDateString('id-ID', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
@@ -122,7 +127,7 @@ export const AttendanceSheet: React.FC<Props> = (props) => {
       </div>
 
       {/* Student List */}
-      {selectedClass && selectedScheduleId && selectedDate ? (
+      {selectedClass && (isClassTeacher || selectedScheduleId) && selectedDate ? (
           <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden animate-in fade-in slide-in-from-top-2">
             {/* Toolbar */}
             <div className="p-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
@@ -132,7 +137,7 @@ export const AttendanceSheet: React.FC<Props> = (props) => {
                  </div>
                  <div className="flex items-center gap-4">
                     <div className="text-right">
-                        <p className="text-xs font-bold text-slate-500 uppercase">Pertemuan Tanggal</p>
+                        <p className="text-xs font-bold text-slate-500 uppercase">Presensi Tanggal</p>
                         <p className="text-sm font-bold text-slate-900">
                             {new Date(selectedDate).toLocaleDateString('id-ID', { dateStyle: 'full' })}
                         </p>
@@ -219,9 +224,9 @@ export const AttendanceSheet: React.FC<Props> = (props) => {
       ) : (
           <div className="flex flex-col items-center justify-center py-20 bg-slate-50 border-2 border-dashed border-slate-300 rounded-xl text-slate-400">
                <span className="material-symbols-outlined text-5xl mb-3 text-slate-300">calendar_clock</span>
-               <p className="font-medium text-lg">Pilih Jadwal & Tanggal</p>
+               <p className="font-medium text-lg">Pilih {isClassTeacher ? 'Kelas & Tanggal' : 'Jadwal & Tanggal'}</p>
                <p className="text-sm text-center max-w-md mt-2">
-                   Sistem otomatis mendeteksi tanggal pertemuan berdasarkan hari jadwal.<br/>
+                   Sistem otomatis mendeteksi tanggal pertemuan.<br/>
                    Pilih tanggal berwarna <strong>Hijau (✅)</strong> untuk melihat atau mengedit data yang tersimpan.
                </p>
           </div>

@@ -6,6 +6,62 @@ export type SchoolLevel = 'SD' | 'SMP' | 'SMA' | 'SMK';
 export type AssessmentType = 'FORMATIVE' | 'SUMMATIVE'; // Added Type
 export type EventType = 'HOLIDAY' | 'EXAM' | 'MEETING' | 'OTHER'; // New Event Type
 
+// --- STANDARDIZED SUBJECTS DATA ---
+export const SUBJECTS_DATA = {
+  SD: {
+    CLASS_TEACHER: [
+      'Pendidikan Pancasila',
+      'Bahasa Indonesia',
+      'Matematika',
+      'Seni dan Budaya',
+      'Muatan Lokal',
+      'Ilmu Pengetahuan Alam dan Sosial (IPAS)',
+      'Koding dan Kecerdasan Artifisial (AI)'
+    ],
+    SUBJECT_TEACHER: [
+      'Pendidikan Agama dan Budi Pekerti',
+      'Pendidikan Jasmani Olahraga dan Kesehatan (PJOK)',
+      'Bahasa Inggris',
+      'Koding dan Kecerdasan Artifisial (KKA)'
+    ]
+  },
+  SMP: [
+    'Pendidikan Agama dan Budi Pekerti',
+    'Pendidikan Pancasila',
+    'Bahasa Indonesia',
+    'Matematika',
+    'Ilmu Pengetahuan Alam (IPA)',
+    'Ilmu Pengetahuan Sosial (IPS)',
+    'Bahasa Inggris',
+    'Pendidikan Jasmani Olahraga dan Kesehatan (PJOK)',
+    'Informatika',
+    'Seni Budaya/Prakarya',
+    'Koding dan Kecerdasan Artifisial (KKA)',
+    'Muatan Lokal'
+  ],
+  SMA_SMK: [
+    'Pendidikan Agama dan Budi Pekerti',
+    'Pendidikan Pancasila',
+    'Bahasa Indonesia',
+    'Matematika',
+    'Ilmu Pengetahuan Alam (IPA)',
+    'Ilmu Pengetahuan Sosial (IPS)',
+    'Fisika',
+    'Kimia',
+    'Biologi',
+    'Sosiologi',
+    'Ekonomi',
+    'Geografi',
+    'Antropologi',
+    'Bahasa Inggris',
+    'Pendidikan Jasmani Olahraga dan Kesehatan (PJOK)',
+    'Sejarah',
+    'Seni Budaya/Prakarya',
+    'Koding dan Kecerdasan Artifisial (KKA)',
+    'Lainnya'
+  ]
+};
+
 // AUTH TYPES
 export interface User {
   id: string;
@@ -45,6 +101,7 @@ export interface Student {
   id: string;
   name: string;
   nis: string;
+  nisn?: string; // Added NISN
   className?: string; 
 }
 
@@ -116,9 +173,9 @@ export interface JournalEntry {
 // UPDATED GRADE DATA STRUCTURE
 export interface GradeData {
   [studentId: string]: {
-    // Formative: Checkbox based (Tercapai/Belum) per Criteria ID
-    formative: { [criteriaId: string]: boolean }; 
-    // Summative: Score based (0-100) per Lingkup Materi (Scope Name)
+    // Formative: Score 0-100 per TP ID
+    formative: { [tpId: string]: number }; 
+    // Summative: Score 0-100 per Lingkup Materi (Scope Name)
     summative: { [scopeName: string]: number };
     // Legacy support / Direct criteria scoring (optional, kept for transition)
     scores?: { [criteriaId: string]: number }; 
@@ -141,6 +198,8 @@ export interface IdentityData {
   subjectName: string; 
   teacherName: string;
   nip: string;
+  principalName?: string; // Added Headmaster Name
+  principalNip?: string; // Added Headmaster NIP
   semester: string;
   academicYear: string;
   className: string; 

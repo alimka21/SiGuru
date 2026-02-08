@@ -15,6 +15,14 @@ interface LocalFormData extends Omit<CalendarEvent, 'id'> {
     customNote?: string;
 }
 
+// HELPER: Convert Date to Local ISO String (YYYY-MM-DD)
+// This avoids the UTC conversion issue where 8th becomes 7th late night
+const toLocalISO = (date: Date) => {
+    const offset = date.getTimezoneOffset() * 60000; // Offset in milliseconds
+    const localDate = new Date(date.getTime() - offset);
+    return localDate.toISOString().split('T')[0];
+};
+
 export const useCalendarLogic = ({ events, onUpdateEvents }: UseCalendarLogicProps) => {
   const location = useLocation();
   
@@ -77,7 +85,7 @@ export const useCalendarLogic = ({ events, onUpdateEvents }: UseCalendarLogicPro
   };
 
   const handleDayClick = (date: Date) => {
-      const dateStr = date.toISOString().split('T')[0];
+      const dateStr = toLocalISO(date);
       setSelectedDate(dateStr);
       setFormData({ title: '', date: dateStr, description: '', type: 'MEETING', customNote: '' });
       setIsModalOpen(true);
@@ -139,7 +147,7 @@ export const useCalendarLogic = ({ events, onUpdateEvents }: UseCalendarLogicPro
 
   return {
       state: { currentDate, selectedDate, isModalOpen, formData },
-      computed: { monthData, selectedDayEvents },
+      computed: { monthData, selectedDayEvents, toLocalISO },
       handlers: { changeMonth, handleDayClick, handleAddEvent, handleDeleteEvent, closeModal, setFormData }
   };
 };

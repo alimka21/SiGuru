@@ -22,8 +22,8 @@ export const JournalManager: React.FC<Props> = (props) => {
     handlers
   } = useJournalLogic(props);
 
-  const { isModalOpen, editingId, filterClass, filterSubject, searchQuery, formData } = state;
-  const { availableClasses, availableSubjects, filteredJournals, availableLMs } = computed;
+  const { isModalOpen, editingId, filterClass, filterSubject, searchQuery, formData, selectedScope } = state;
+  const { availableClasses, availableSubjects, filteredJournals, availableScopes, availableTPs, availableLMs } = computed;
 
   return (
     <div className="w-full max-w-7xl mx-auto pb-10">
@@ -42,12 +42,19 @@ export const JournalManager: React.FC<Props> = (props) => {
         </div>
         <div className="flex gap-3">
              <button 
-                onClick={handlers.handleExportExcel}
-                disabled={filteredJournals.length === 0}
-                className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-bold hover:bg-green-700 transition-colors shadow-lg shadow-green-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={() => window.print()}
+                className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-bold hover:bg-slate-50 transition-colors text-slate-700"
             >
-                <span className="material-symbols-outlined text-sm">table_view</span>
-                Export Excel
+                <span className="material-symbols-outlined text-sm">print</span>
+                Cetak
+            </button>
+             <button 
+                onClick={handlers.handleExportWord}
+                disabled={filteredJournals.length === 0}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-700 text-white rounded-lg text-sm font-bold hover:bg-blue-800 transition-colors shadow-lg shadow-blue-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+                <span className="material-symbols-outlined text-sm">description</span>
+                Export Word
             </button>
             <button 
                 onClick={() => setters.setIsModalOpen(true)}
@@ -59,8 +66,8 @@ export const JournalManager: React.FC<Props> = (props) => {
         </div>
       </div>
 
-      {/* FILTER BAR (REQUIRED) */}
-      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm mb-6 flex flex-col md:flex-row gap-6 items-end">
+      {/* FILTER BAR */}
+      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm mb-6 flex flex-col md:flex-row gap-6 items-end print:hidden">
          <div className="flex-1 w-full grid grid-cols-1 md:grid-cols-2 gap-4">
              {/* Class Filter */}
              <div className="space-y-1">
@@ -118,7 +125,6 @@ export const JournalManager: React.FC<Props> = (props) => {
 
       {/* Main Content: List or Empty State */}
       <div className="space-y-4">
-          {/* Validation: Check if filters are selected */}
           {!filterClass || !filterSubject ? (
               <div className="flex flex-col items-center justify-center py-16 bg-slate-50 border-2 border-dashed border-slate-300 rounded-xl text-slate-400">
                   <span className="material-symbols-outlined text-5xl mb-3 text-slate-300">filter_alt</span>
@@ -129,7 +135,6 @@ export const JournalManager: React.FC<Props> = (props) => {
               </div>
           ) : (
               <>
-                {/* Stats Bar if filtered */}
                 <div className="flex justify-between items-center px-2">
                     <p className="text-sm font-bold text-slate-500">
                         Menampilkan riwayat untuk <span className="text-primary">{filterSubject}</span> di <span className="text-primary">{filterClass}</span>
@@ -140,15 +145,16 @@ export const JournalManager: React.FC<Props> = (props) => {
                 </div>
 
                 {filteredJournals.length > 0 ? (
-                    filteredJournals.map(journal => {
+                    <div className="space-y-4 print:space-y-6">
+                    {filteredJournals.map(journal => {
                         const tp = props.tps.find(t => t.id === journal.tpId);
                         const lm = tp?.lms.find(l => l.id === journal.lmId);
                         
                         return (
-                            <div key={journal.id} className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm hover:shadow-md transition-all animate-in fade-in slide-in-from-bottom-2">
+                            <div key={journal.id} className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm hover:shadow-md transition-all animate-in fade-in slide-in-from-bottom-2 print:border-black print:shadow-none print:break-inside-avoid">
                                 <div className="flex justify-between items-start mb-4">
                                     <div className="flex items-center gap-4">
-                                        <div className="bg-blue-50 text-blue-700 px-3 py-2 rounded-lg text-center min-w-[80px]">
+                                        <div className="bg-blue-50 text-blue-700 px-3 py-2 rounded-lg text-center min-w-[80px] print:border print:border-gray-300 print:bg-white print:text-black">
                                             <p className="text-xs font-bold uppercase">{new Date(journal.date).toLocaleDateString('id-ID', { month: 'short' })}</p>
                                             <p className="text-2xl font-black">{new Date(journal.date).getDate()}</p>
                                         </div>
@@ -156,34 +162,32 @@ export const JournalManager: React.FC<Props> = (props) => {
                                             <h3 className="text-lg font-bold text-slate-900">{journal.activity}</h3>
                                             <div className="flex items-center gap-3 text-sm text-slate-500 mt-1">
                                                 <span className="flex items-center gap-1 font-bold text-slate-700">
-                                                    <span className="material-symbols-outlined text-sm">book</span> {journal.subjectName || 'Mapel Umum'}
+                                                    <span className="material-symbols-outlined text-sm print:hidden">book</span> {journal.subjectName || 'Mapel Umum'}
                                                 </span>
                                                 <span className="flex items-center gap-1">
-                                                    <span className="material-symbols-outlined text-sm">schedule</span> {journal.startTime} - {journal.endTime}
+                                                    <span className="material-symbols-outlined text-sm print:hidden">schedule</span> {journal.startTime} - {journal.endTime}
                                                 </span>
                                                 <span className="flex items-center gap-1">
-                                                    <span className="material-symbols-outlined text-sm">school</span> {journal.className}
+                                                    <span className="material-symbols-outlined text-sm print:hidden">school</span> {journal.className}
                                                 </span>
                                             </div>
                                         </div>
                                     </div>
-                                    <div className="flex gap-2">
+                                    <div className="flex gap-2 print:hidden">
                                         <button onClick={() => handlers.handleEdit(journal)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"><span className="material-symbols-outlined">edit</span></button>
                                         <button onClick={() => handlers.handleDelete(journal.id)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg"><span className="material-symbols-outlined">delete</span></button>
                                     </div>
                                 </div>
 
-                                <div className="bg-slate-50 p-4 rounded-lg text-sm space-y-2 mb-4 border border-slate-100">
+                                <div className="bg-slate-50 p-4 rounded-lg text-sm space-y-2 mb-4 border border-slate-100 print:bg-white print:border-gray-200">
+                                    <p className="flex gap-2">
+                                        <span className="font-bold text-slate-700 w-24 shrink-0">Lingkup Materi:</span>
+                                        <span className="text-slate-600">{tp?.scope || '-'}</span>
+                                    </p>
                                     <p className="flex gap-2">
                                         <span className="font-bold text-slate-700 w-24 shrink-0">TP:</span>
                                         <span className="text-slate-600">{tp?.code} - {tp?.description}</span>
                                     </p>
-                                    {lm && (
-                                        <p className="flex gap-2">
-                                            <span className="font-bold text-slate-700 w-24 shrink-0">Materi (LM):</span>
-                                            <span className="text-slate-600">{lm.title}</span>
-                                        </p>
-                                    )}
                                 </div>
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -198,7 +202,8 @@ export const JournalManager: React.FC<Props> = (props) => {
                                 </div>
                             </div>
                         );
-                    })
+                    })}
+                    </div>
                 ) : (
                     <div className="flex flex-col items-center justify-center py-12 bg-slate-50 border border-dashed border-slate-300 rounded-xl text-slate-400">
                         <span className="material-symbols-outlined text-4xl mb-2">auto_stories</span>
@@ -212,7 +217,7 @@ export const JournalManager: React.FC<Props> = (props) => {
 
       {/* MODAL FORM */}
       {isModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 overflow-y-auto print:hidden">
               <div className="bg-white rounded-2xl w-full max-w-3xl shadow-2xl my-8">
                   <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50 rounded-t-2xl sticky top-0">
                       <h3 className="text-xl font-bold text-slate-900">{editingId ? 'Edit Jurnal' : 'Tambah Jurnal Baru'}</h3>
@@ -268,45 +273,61 @@ export const JournalManager: React.FC<Props> = (props) => {
                                     placeholder="Pilih jadwal dulu..."
                                 />
                           </div>
-                          <div className="space-y-1">
-                              <label className="text-xs font-bold text-slate-500 uppercase">Jam Mulai</label>
-                              <input type="time" readOnly className="w-full rounded-lg border-slate-200 bg-slate-100 text-sm font-bold text-slate-700" value={formData.startTime} />
-                          </div>
-                          <div className="space-y-1">
-                              <label className="text-xs font-bold text-slate-500 uppercase">Jam Selesai</label>
-                              <input type="time" readOnly className="w-full rounded-lg border-slate-200 bg-slate-100 text-sm font-bold text-slate-700" value={formData.endTime} />
-                          </div>
                       </div>
 
                       <div className="bg-white border border-slate-200 p-4 rounded-xl space-y-4">
+                          {/* 1. Select Lingkup Materi (Scope) */}
+                          <div className="space-y-1">
+                                <label className="text-xs font-bold text-slate-500 uppercase">Lingkup Materi (Kurikulum) <span className="text-red-500">*</span></label>
+                                <select 
+                                    className="w-full rounded-lg border-slate-200 text-sm font-bold text-slate-900 focus:ring-primary"
+                                    value={selectedScope}
+                                    onChange={e => {
+                                        setters.setSelectedScope(e.target.value);
+                                        setters.setFormData({...formData, tpId: '', lmId: ''}); // Reset dependent fields
+                                    }}
+                                >
+                                    <option value="">-- Pilih Lingkup Materi --</option>
+                                    {availableScopes.map(scope => (
+                                        <option key={scope} value={scope}>{scope}</option>
+                                    ))}
+                                </select>
+                          </div>
+
+                          {/* 2. Select TP based on Scope */}
                           <div className="space-y-1">
                                 <label className="text-xs font-bold text-slate-500 uppercase">Tujuan Pembelajaran (TP) <span className="text-red-500">*</span></label>
                                 <select 
                                     required
-                                    className="w-full rounded-lg border-slate-200 text-sm font-bold text-slate-900 focus:ring-primary"
+                                    className="w-full rounded-lg border-slate-200 text-sm font-bold text-slate-900 focus:ring-primary disabled:bg-slate-100 disabled:text-slate-400"
                                     value={formData.tpId}
                                     onChange={e => setters.setFormData({...formData, tpId: e.target.value, lmId: ''})}
+                                    disabled={!selectedScope}
                                 >
-                                    <option value="">-- Pilih TP --</option>
-                                    {props.tps.map(tp => (
+                                    <option value="">{selectedScope ? '-- Pilih TP sesuai Materi --' : '-- Pilih Lingkup Materi Dahulu --'}</option>
+                                    {availableTPs.map(tp => (
                                         <option key={tp.id} value={tp.id}>{tp.code} - {tp.description}</option>
                                     ))}
                                 </select>
                           </div>
-                          <div className="space-y-1">
-                                <label className="text-xs font-bold text-slate-500 uppercase">Lingkup Materi (LM)</label>
-                                <select 
-                                    className="w-full rounded-lg border-slate-200 text-sm font-bold text-slate-900 focus:ring-primary"
-                                    value={formData.lmId}
-                                    onChange={e => setters.setFormData({...formData, lmId: e.target.value})}
-                                    disabled={!formData.tpId}
-                                >
-                                    <option value="">-- Pilih Materi (Opsional) --</option>
-                                    {availableLMs.map(lm => (
-                                        <option key={lm.id} value={lm.id}>{lm.code} - {lm.title}</option>
-                                    ))}
-                                </select>
-                          </div>
+
+                          {/* 3. Optional Specific Material */}
+                          {availableLMs.length > 0 && (
+                              <div className="space-y-1">
+                                    <label className="text-xs font-bold text-slate-500 uppercase">Sub-Materi Spesifik (Opsional)</label>
+                                    <select 
+                                        className="w-full rounded-lg border-slate-200 text-sm font-bold text-slate-900 focus:ring-primary"
+                                        value={formData.lmId}
+                                        onChange={e => setters.setFormData({...formData, lmId: e.target.value})}
+                                        disabled={!formData.tpId}
+                                    >
+                                        <option value="">-- Pilih Sub-Materi (Jika ada) --</option>
+                                        {availableLMs.map(lm => (
+                                            <option key={lm.id} value={lm.id}>{lm.code} - {lm.title}</option>
+                                        ))}
+                                    </select>
+                              </div>
+                          )}
                       </div>
 
                       <div className="space-y-1">

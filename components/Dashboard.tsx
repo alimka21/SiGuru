@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { TabView, IdentityData, ScheduleItem, ClassInfo, Student, AttendanceData, GradeData, Subject, LearningObjective, TeacherRole, SchoolLevel, CalendarEvent } from '../types';
+import { TabView, IdentityData, ScheduleItem, ClassInfo, Student, AttendanceData, GradeData, Subject, LearningObjective, TeacherRole, SchoolLevel, CalendarEvent, SUBJECTS_DATA } from '../types';
 import { useDashboardLogic } from '../hooks/useDashboardLogic';
 
 declare const Swal: any;
@@ -19,20 +19,6 @@ interface Props {
   // Callback untuk menyimpan identity dari modal dashboard
   onSaveIdentity?: (data: IdentityData) => void;
 }
-
-// --- DATA REFERENSI MAPEL ---
-const SUBJECTS_SD = [
-    'Bahasa Indonesia', 'Matematika', 'IPAS', 'Pendidikan Pancasila', 
-    'Seni Budaya', 'PJOK', 'Bahasa Inggris', 'Muatan Lokal', 'PAI', 'PAK'
-];
-
-const SUBJECTS_SECONDARY = [
-    'Matematika', 'Bahasa Indonesia', 'Bahasa Inggris', 'Pendidikan Pancasila',
-    'Informatika', 'IPA', 'IPS', 'PJOK', 'Seni Budaya', 
-    'Fisika', 'Kimia', 'Biologi', 
-    'Sejarah', 'Geografi', 'Ekonomi', 'Sosiologi',
-    'PAI', 'PAK', 'BK'
-];
 
 const StatCard = ({ title, value, subText, subColor, icon, bgIcon }: any) => (
   <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm flex flex-col gap-2 relative overflow-hidden transition-all hover:shadow-md group">
@@ -153,7 +139,13 @@ export const Dashboard: React.FC<Props> = (props) => {
 
   // List Mapel Dinamis berdasarkan Jenjang
   const availableSubjects = useMemo(() => {
-      return setupData.level === 'SD' ? SUBJECTS_SD : SUBJECTS_SECONDARY;
+      if (setupData.level === 'SD') {
+          return SUBJECTS_DATA.SD.SUBJECT_TEACHER;
+      } else if (setupData.level === 'SMP') {
+          return SUBJECTS_DATA.SMP;
+      } else {
+          return SUBJECTS_DATA.SMA_SMK;
+      }
   }, [setupData.level]);
 
   useEffect(() => {

@@ -34,10 +34,14 @@ export const useStudentLogic = ({
   const [filterClass, setFilterClass] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
+  // SELECTION STATE
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
   // Default Form Data
   const [formData, setFormData] = useState({
       name: '',
       nis: '',
+      nisn: '', // Added NISN
       gender: 'L',
       className: '',
       status: 'Aktif'
@@ -55,12 +59,68 @@ export const useStudentLogic = ({
 
   // --- HANDLERS ---
 
+  // SELECTION HANDLERS
+  const toggleSelection = (id: string) => {
+      const newSet = new Set(selectedIds);
+      if (newSet.has(id)) newSet.delete(id);
+      else newSet.add(id);
+      setSelectedIds(newSet);
+  };
+
+  const toggleAll = (selectAll: boolean) => {
+      if (selectAll) {
+          const allIds = filteredStudents.map(s => s.id);
+          setSelectedIds(new Set(allIds));
+      } else {
+          setSelectedIds(new Set());
+      }
+  };
+
+  const handleDeleteSelected = () => {
+      if (selectedIds.size === 0) return;
+
+      Swal.fire({
+          title: `Hapus ${selectedIds.size} Siswa?`,
+          text: "Data yang dihapus tidak dapat dikembalikan!",
+          icon: 'warning',
+          showCancelButton: true,
+          confirmButtonColor: '#d33',
+          confirmButtonText: 'Ya, Hapus'
+      }).then((result: any) => {
+          if (result.isConfirmed) {
+              const newStudents = students.filter(s => !selectedIds.has(s.id));
+              onUpdateStudents(newStudents);
+              setSelectedIds(new Set());
+              Swal.fire('Terhapus!', 'Data terpilih berhasil dihapus.', 'success');
+          }
+      });
+  };
+
+  const handleDeleteAll = () => {
+      Swal.fire({
+          title: 'HAPUS SEMUA DATA SISWA?',
+          text: "PERINGATAN: Seluruh data siswa akan hilang permanen. Pastikan Anda sudah backup/export data jika diperlukan.",
+          icon: 'warning',
+          showCancelButton: true,
+          confirmButtonColor: '#d33',
+          confirmButtonText: 'Ya, Kosongkan Data',
+          cancelButtonText: 'Batal'
+      }).then((result: any) => {
+          if (result.isConfirmed) {
+              onUpdateStudents([]);
+              setSelectedIds(new Set());
+              Swal.fire('Reset!', 'Database siswa telah dikosongkan.', 'success');
+          }
+      });
+  };
+
   const handleOpenModal = (student?: Student) => {
       if (student) {
           setEditingId(student.id);
           setFormData({
               name: student.name,
               nis: student.nis,
+              nisn: student.nisn || '',
               gender: 'L',
               className: student.className || '',
               status: 'Aktif'
@@ -81,7 +141,7 @@ export const useStudentLogic = ({
 
           setEditingId(null);
           const defaultClass = classes.length > 0 ? classes[0].name : '';
-          setFormData({ name: '', nis: '', gender: 'L', className: defaultClass, status: 'Aktif' });
+          setFormData({ name: '', nis: '', nisn: '', gender: 'L', className: defaultClass, status: 'Aktif' });
           setIsModalOpen(true);
       }
   };
@@ -92,7 +152,7 @@ export const useStudentLogic = ({
       if (!formData.name.trim() || !formData.nis.trim() || !formData.className || !formData.gender) {
           Swal.fire({
               title: 'Gagal Menyimpan',
-              text: "Semua kolom (Nama, NIS, Jenis Kelamin, Kelas) wajib diisi!",
+              text: "Semua kolom wajib (Nama, NIS, Kelas, L/P) harus diisi!",
               icon: 'error',
               confirmButtonColor: '#d33',
               confirmButtonText: 'OK'
@@ -110,6 +170,7 @@ export const useStudentLogic = ({
               id: Date.now().toString(),
               name: formattedName,
               nis: formData.nis,
+              nisn: formData.nisn, // Include NISN
               className: formData.className,
           };
           onUpdateStudents([newStudent, ...students]);
@@ -177,6 +238,7 @@ export const useStudentLogic = ({
           { header: 'No', key: 'no', width: 5 },
           { header: 'Nama Lengkap', key: 'name', width: 30 },
           { header: 'NIS', key: 'nis', width: 15 },
+          { header: 'NISN', key: 'nisn', width: 15 }, // Added NISN Column
           { header: 'Kelas', key: 'className', width: 15 },
           { header: 'L/P', key: 'gender', width: 10 },
       ];
@@ -185,7 +247,7 @@ export const useStudentLogic = ({
       headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
       headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF137FEC' } };
 
-      sheet.addRow([1, 'Contoh: Ahmad Dahlan', '12345', '10-A', 'L']);
+      sheet.addRow([1, 'Contoh: Ahmad Dahlan', '12345', '0012345678', '10-A', 'L']);
 
       const buffer = await workbook.xlsx.writeBuffer();
       const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
@@ -227,14 +289,20 @@ export const useStudentLogic = ({
 
                   const name = row.getCell(2).text?.trim(); 
                   const nis = row.getCell(3).text?.trim();  
-                  let className = row.getCell(4).text?.trim(); 
+                  const nisn = row.getCell(4).text?.trim(); // Read NISN
+                  let className = row.getCell(5).text?.trim(); 
+                  const genderRaw = row.getCell(6).text?.trim().toUpperCase();
+                  const gender = genderRaw === 'P' ? 'P' : 'L';
                   
                   if (name && nis && className) {
                       const student: Student = {
                           id: `imp-${Date.now()}-${rowNumber}`,
                           name: toTitleCase(name),
                           nis: nis,
+                          nisn: nisn,
                           className: className,
+                          // gender would ideally be in Student type too if used for import logic, 
+                          // but sticking to displayed props for now.
                       };
                       newStudents.push(student);
                       importedClassNames.add(className);
@@ -295,7 +363,7 @@ export const useStudentLogic = ({
   };
 
   return {
-    state: { isModalOpen, editingId, filterClass, searchQuery, formData },
+    state: { isModalOpen, editingId, filterClass, searchQuery, formData, selectedIds },
     setters: { setIsModalOpen, setFilterClass, setSearchQuery, setFormData },
     computed: { filteredStudents },
     handlers: { 
@@ -303,7 +371,11 @@ export const useStudentLogic = ({
         handleSaveStudent, 
         handleDeleteStudent, 
         handleImportMenuClick, 
-        handleFileUpload 
+        handleFileUpload,
+        toggleSelection,
+        toggleAll,
+        handleDeleteSelected,
+        handleDeleteAll
     },
     refs: { fileInputRef }
   };

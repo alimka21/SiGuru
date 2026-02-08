@@ -1,8 +1,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
-import { z } from 'zod'; 
-import { Student, LearningObjective, GradeData, Subject, IdentityData } from '../types';
+import { Student, LearningObjective, GradeData, Subject, IdentityData, SUBJECTS_DATA } from '../types';
 import { calculateStudentGrade } from '../utils/grading';
 
 interface UseGradingLogicProps {
@@ -12,7 +11,7 @@ interface UseGradingLogicProps {
   initialClass?: string;
   globalGradeData: GradeData;
   setGlobalGradeData: React.Dispatch<React.SetStateAction<GradeData>>;
-  identity: IdentityData; // Added identity for role based logic
+  identity: IdentityData; 
 }
 
 export const useGradingLogic = ({
@@ -24,18 +23,19 @@ export const useGradingLogic = ({
   setGlobalGradeData,
   identity
 }: UseGradingLogicProps) => {
-  // --- ROUTER LOCATION ---
   const location = useLocation();
 
   // --- STATE ---
-  // Restore Tabs Logic
-  const [activeTab, setActiveTab] = useState<'FORMATIVE' | 'SUMMATIVE'>('SUMMATIVE');
-
+  const [activeTab, setActiveTab] = useState<'FORMATIVE' | 'SUMMATIVE'>('FORMATIVE');
   const [currentTime, setCurrentTime] = useState(new Date());
   
   // Filters
   const [selectedClass, setSelectedClass] = useState<string>('');
   const [selectedSubject, setSelectedSubject] = useState<string>('');
+  const [selectedSemester, setSelectedSemester] = useState<string>('1'); // Default Semester
+  
+  // KKTP State (Dynamic Parameter)
+  const [currentKktp, setCurrentKktp] = useState<number>(75);
 
   // --- EFFECTS ---
   
@@ -44,24 +44,29 @@ export const useGradingLogic = ({
     if (initialClass) setSelectedClass(initialClass);
   }, [initialClass]);
 
-  // 2. Initialize Subject based on Identity
+  // 2. Initialize & Lock Subject based on Identity
   useEffect(() => {
-      // Jika belum ada subject yang dipilih
-      if (!selectedSubject) {
-          if (identity.role === 'SUBJECT_TEACHER' && identity.subjectName) {
-              // Guru Mapel: Default ke mapel mereka, tapi nanti bisa diubah via dropdown jika list tersedia
-              // Kita set ID mapel. Karena di mock data ID mapel statis, kita coba match nama dulu atau default.
-              // Untuk simplifikasi mock, kita set default ke 's1' atau ID yang sesuai jika ada match.
-              // Di real app, ini akan mencari ID based on Name.
-              setSelectedSubject('s1'); // Default fallback
+      if (identity.role === 'SUBJECT_TEACHER' && identity.subjectName) {
+          setSelectedSubject(identity.subjectName);
+      } else if (!selectedSubject) {
+          // Default fallback for Class Teacher
+          if (identity.level === 'SD') {
+              setSelectedSubject(SUBJECTS_DATA.SD.CLASS_TEACHER[0]);
+          } else if (identity.level === 'SMP') {
+              setSelectedSubject(SUBJECTS_DATA.SMP[0]);
           } else {
-              // Guru Kelas (SD): Default ke Mapel pertama (misal Matematika / B.Indo)
-              setSelectedSubject('Bahasa Indonesia'); 
+              setSelectedSubject(SUBJECTS_DATA.SMA_SMK[0]);
           }
       }
   }, [identity, selectedSubject]);
 
-  // 3. Time Interval
+  // 3. Initialize Semester from Identity (Active Context)
+  useEffect(() => {
+      const activeSem = identity.semester === 'Genap' || identity.semester === '2' ? '2' : '1';
+      setSelectedSemester(activeSem);
+  }, [identity.semester]);
+
+  // 4. Time Interval
   useEffect(() => {
     const interval = setInterval(() => setCurrentTime(new Date()), 60000);
     return () => clearInterval(interval);
@@ -79,18 +84,15 @@ export const useGradingLogic = ({
       return students.filter(s => s.className === selectedClass).sort((a,b) => a.name.localeCompare(b.name));
   }, [students, selectedClass]);
 
-  // Filter TPs based on Selected Subject (Crucial for SD vs Mapel context)
-  // Note: In a real app, TPs have a subjectId. We filter by that.
-  // Since mock TPs might not strictly follow, we try to filter if subjectId matches, or show all if undefined.
+  // Filter TPs based on Subject AND Semester
   const filteredTPs = useMemo(() => {
-      // Logic: Filter TPs by selected Subject ID/Name
-      // If TP.subjectId is missing, assume it belongs to all (or generic)
-      // For this prototype, we map specific subjects if needed.
-      return tps; 
-      // In production: return tps.filter(tp => tp.subjectId === selectedSubject);
-  }, [tps, selectedSubject]);
+      if (!selectedSubject) return [];
+      return tps.filter(tp => 
+          tp.subjectId === selectedSubject && 
+          tp.semester.toString() === selectedSemester
+      );
+  }, [tps, selectedSubject, selectedSemester]);
 
-  // 1. SUMMATIVE COLUMNS: Unique Scopes from Filtered TPs
   const uniqueScopes = useMemo(() => {
       const scopes = new Set<string>();
       filteredTPs.forEach(tp => {
@@ -99,7 +101,6 @@ export const useGradingLogic = ({
       return Array.from(scopes).sort();
   }, [filteredTPs]);
 
-  // 2. FORMATIVE COLUMNS: Group Filtered TPs by Scope
   const tpsByScope = useMemo(() => {
       const grouped: Record<string, LearningObjective[]> = {};
       filteredTPs.forEach(tp => {
@@ -110,21 +111,24 @@ export const useGradingLogic = ({
       return grouped;
   }, [filteredTPs]);
 
-  // Stats Calculation
+  // Stats Calculation uses dynamic currentKktp and correctly filtered TPs
   const stats = useMemo(() => {
       return filteredStudents.reduce((acc, student) => {
-          const res = calculateStudentGrade(student.id, globalGradeData, filteredTPs, subject.kktp);
+          const res = calculateStudentGrade(student.id, globalGradeData, filteredTPs, currentKktp);
           if (res.finalScore > 0) {
               if (res.isPassed) acc.tuntas++; else acc.remedial++;
           }
           return acc;
       }, { tuntas: 0, remedial: 0 });
-  }, [filteredStudents, globalGradeData, filteredTPs, subject.kktp]);
+  }, [filteredStudents, globalGradeData, filteredTPs, currentKktp]);
 
   // --- HANDLERS ---
 
-  // Handle Formative Checkbox (Boolean)
-  const handleFormativeCheck = useCallback((studentId: string, criteriaId: string, checked: boolean) => {
+  const handleFormativeScore = useCallback((studentId: string, tpId: string, value: string) => {
+      const numValue = value === '' ? undefined : parseFloat(value);
+      
+      if (numValue !== undefined && (numValue < 0 || numValue > 100)) return;
+
       setGlobalGradeData(prev => {
           const sData = prev[studentId] || { formative: {}, summative: {}, attitude: 0 };
           return {
@@ -133,14 +137,13 @@ export const useGradingLogic = ({
                   ...sData,
                   formative: {
                       ...(sData.formative || {}),
-                      [criteriaId]: checked
+                      [tpId]: numValue !== undefined ? numValue : 0
                   }
               }
           };
       });
   }, [setGlobalGradeData]);
 
-  // Handle Summative Input (Number) by Scope
   const handleSummativeScore = useCallback((studentId: string, scopeName: string, value: string) => {
       const numValue = value === '' ? undefined : parseFloat(value);
       
@@ -168,12 +171,16 @@ export const useGradingLogic = ({
       activeTab,
       currentTime,
       selectedClass,
-      selectedSubject
+      selectedSubject,
+      selectedSemester, // Exposed
+      currentKktp
     },
     setters: {
       setActiveTab,
       setSelectedClass,
-      setSelectedSubject
+      setSelectedSubject,
+      setSelectedSemester, // Exposed
+      setCurrentKktp
     },
     computed: {
       availableClasses,
@@ -184,7 +191,7 @@ export const useGradingLogic = ({
       filteredTPs
     },
     handlers: {
-      handleFormativeCheck,
+      handleFormativeScore,
       handleSummativeScore
     }
   };

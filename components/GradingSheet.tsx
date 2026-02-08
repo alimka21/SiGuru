@@ -1,8 +1,10 @@
 
 import React, { useMemo } from 'react';
-import { Student, LearningObjective, GradeData, Subject, IdentityData } from '../types';
-import { calculateStudentGrade } from '../utils/grading';
+import { Student, LearningObjective, GradeData, Subject, IdentityData, SUBJECTS_DATA } from '../types';
+import { calculateStudentGrade, getQualitativeLabel } from '../utils/grading';
 import { useGradingLogic } from '../hooks/useGradingLogic';
+
+declare const Swal: any;
 
 interface Props {
   students: Student[];
@@ -11,38 +13,10 @@ interface Props {
   initialClass?: string;
   globalGradeData: GradeData;
   setGlobalGradeData: React.Dispatch<React.SetStateAction<GradeData>>;
-  // Identity diperlukan untuk menentukan opsi mata pelajaran (SD vs SMP/SMA)
   identity?: IdentityData; 
 }
 
-// Daftar Mapel SD (Guru Kelas)
-const SD_SUBJECTS = [
-    { id: 'Bahasa Indonesia', name: 'Bahasa Indonesia' },
-    { id: 'Matematika', name: 'Matematika' },
-    { id: 'IPAS', name: 'Ilmu Pengetahuan Alam dan Sosial (IPAS)' },
-    { id: 'Pendidikan Pancasila', name: 'Pendidikan Pancasila' },
-    { id: 'Seni Budaya', name: 'Seni Budaya' },
-    { id: 'PJOK', name: 'PJOK' },
-    { id: 'Bahasa Inggris', name: 'Bahasa Inggris' },
-    { id: 'Muatan Lokal', name: 'Muatan Lokal' }
-];
-
-// Daftar Mapel SMP/SMA (Guru Mapel)
-const SECONDARY_SUBJECTS = [
-    { id: 's1', name: 'Matematika' },
-    { id: 's2', name: 'Fisika' },
-    { id: 's3', name: 'Kimia' },
-    { id: 's4', name: 'Biologi' },
-    { id: 's5', name: 'Bahasa Indonesia' },
-    { id: 's6', name: 'Bahasa Inggris' },
-    { id: 's7', name: 'Sejarah' },
-    { id: 's8', name: 'Geografi' },
-    { id: 's9', name: 'Sosiologi' },
-    { id: 's10', name: 'Ekonomi' },
-];
-
 export const GradingSheet: React.FC<Props> = (props) => {
-  // Default Identity Fallback
   const safeIdentity = props.identity || { role: 'SUBJECT_TEACHER', level: 'SMA', schoolName: '', teacherName: '', nip: '', subjectName: '', semester: '', academicYear: '', className: '', studentCount: 0 };
 
   const { 
@@ -52,22 +26,49 @@ export const GradingSheet: React.FC<Props> = (props) => {
     handlers 
   } = useGradingLogic({ ...props, identity: safeIdentity });
 
-  const { selectedClass, selectedSubject, activeTab } = state;
+  const { selectedClass, selectedSubject, selectedSemester, activeTab, currentKktp } = state;
   const { availableClasses, filteredStudents, uniqueScopes, tpsByScope, stats, filteredTPs } = computed;
 
-  // Determine Subject Options based on Level/Role
+  // Determine Subject Options
   const subjectOptions = useMemo(() => {
-      if (safeIdentity.level === 'SD' || safeIdentity.role === 'CLASS_TEACHER') {
-          return SD_SUBJECTS;
+      if (safeIdentity.level === 'SD') {
+          return safeIdentity.role === 'CLASS_TEACHER' ? SUBJECTS_DATA.SD.CLASS_TEACHER : SUBJECTS_DATA.SD.SUBJECT_TEACHER;
+      } else if (safeIdentity.level === 'SMP') {
+          return SUBJECTS_DATA.SMP;
+      } else {
+          return SUBJECTS_DATA.SMA_SMK;
       }
-      return SECONDARY_SUBJECTS;
   }, [safeIdentity.level, safeIdentity.role]);
+
+  // Lock Subject Dropdown if Subject Teacher
+  const isSubjectLocked = safeIdentity.role === 'SUBJECT_TEACHER';
+
+  // Check History Mode (Editing past semester)
+  const currentSystemSemester = safeIdentity.semester === 'Genap' || safeIdentity.semester === '2' ? '2' : '1';
+  const isHistoryMode = selectedSemester !== currentSystemSemester;
+
+  const handleScoreInputFocus = (e: React.FocusEvent<HTMLInputElement>) => {
+      if (isHistoryMode) {
+          Swal.fire({
+              title: 'Peringatan Semester',
+              text: `Anda sedang mengubah nilai Semester ${selectedSemester}, padahal sistem aktif di Semester ${currentSystemSemester}. Lanjutkan?`,
+              icon: 'warning',
+              showCancelButton: true,
+              confirmButtonText: 'Ya, Ubah',
+              cancelButtonText: 'Batal'
+          }).then((result: any) => {
+              if (!result.isConfirmed) {
+                  e.target.blur();
+              }
+          });
+      }
+      e.target.select();
+  };
 
   return (
     <div className="max-w-[1600px] mx-auto pb-10 relative">
       {/* Header Section */}
       <div className="flex flex-col gap-6 mb-4">
-          {/* Breadcrumbs */}
           <div className="flex items-center gap-2 text-sm font-medium text-slate-500">
             <span className="material-symbols-outlined text-sm">home</span>
             <span className="material-symbols-outlined text-sm">chevron_right</span>
@@ -88,16 +89,45 @@ export const GradingSheet: React.FC<Props> = (props) => {
               </h1>
               <p className="text-slate-500 mt-1">
                   {activeTab === 'FORMATIVE' 
-                    ? 'Ceklis observasi ketercapaian tujuan pembelajaran (Proses).'
+                    ? 'Penilaian tujuan pembelajaran (TP) berdasarkan kriteria yang ditetapkan.'
                     : 'Input nilai angka per lingkup materi (Hasil).'
                   }
               </p>
             </div>
             
-            {/* Class & Subject Selector Toolbar */}
             <div className={`flex flex-wrap gap-3 p-2 rounded-xl border shadow-sm transition-colors duration-300 ${activeTab === 'FORMATIVE' ? 'bg-blue-50 border-blue-200' : 'bg-purple-50 border-purple-200'}`}>
+                 {/* PARAMETER KKTP */}
+                 <div className="relative min-w-[100px] flex items-center bg-white rounded-lg border border-transparent shadow-sm px-3 gap-2">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase">KKTP:</span>
+                    <input 
+                        type="number"
+                        min="0" max="100"
+                        value={currentKktp}
+                        onChange={(e) => setters.setCurrentKktp(Number(e.target.value))}
+                        className="w-14 text-sm font-bold text-slate-900 border-none focus:ring-0 p-0 text-right"
+                    />
+                 </div>
+
+                 {/* Semester Selector (NEW) */}
+                 <div className="relative min-w-[140px]">
+                    <select 
+                        value={selectedSemester} 
+                        onChange={(e) => setters.setSelectedSemester(e.target.value)}
+                        className={`w-full appearance-none pl-9 pr-8 py-2.5 border-transparent rounded-lg text-sm font-bold shadow-sm cursor-pointer
+                            ${isHistoryMode ? 'bg-orange-100 text-orange-800 ring-2 ring-orange-300' : 'bg-white text-slate-900 hover:bg-white/80'}
+                        `}
+                    >
+                        <option value="1">Semester 1</option>
+                        <option value="2">Semester 2</option>
+                    </select>
+                    <span className={`material-symbols-outlined absolute left-3 top-2.5 text-lg pointer-events-none ${isHistoryMode ? 'text-orange-600' : 'text-slate-500'}`}>
+                        date_range
+                    </span>
+                    <span className="material-symbols-outlined absolute right-2 top-3 text-slate-400 pointer-events-none text-sm">expand_more</span>
+                </div>
+
                  {/* Class Selector */}
-                 <div className="relative min-w-[200px]">
+                 <div className="relative min-w-[180px]">
                     <select 
                         value={selectedClass} 
                         onChange={(e) => setters.setSelectedClass(e.target.value)}
@@ -112,48 +142,74 @@ export const GradingSheet: React.FC<Props> = (props) => {
                     <span className="material-symbols-outlined absolute right-2 top-3 text-slate-400 pointer-events-none text-sm">expand_more</span>
                 </div>
 
-                {/* Subject Selector */}
-                <div className="relative min-w-[220px]">
+                {/* Subject Selector (Locked if Subject Teacher) */}
+                <div className="relative min-w-[200px]">
                     <select 
                         value={selectedSubject} 
                         onChange={(e) => setters.setSelectedSubject(e.target.value)}
-                        className="w-full appearance-none pl-10 pr-8 py-2.5 border-transparent rounded-lg text-sm font-bold text-slate-900 bg-white hover:bg-white/80 focus:ring-2 focus:ring-primary transition-all cursor-pointer shadow-sm"
+                        disabled={isSubjectLocked}
+                        className={`w-full appearance-none pl-10 pr-8 py-2.5 border-transparent rounded-lg text-sm font-bold text-slate-900 bg-white shadow-sm transition-all
+                            ${isSubjectLocked ? 'opacity-80 cursor-not-allowed bg-slate-100' : 'hover:bg-white/80 cursor-pointer focus:ring-2 focus:ring-primary'}
+                        `}
                     >
                         {subjectOptions.map(subj => (
-                            <option key={subj.id} value={subj.id}>{subj.name}</option>
+                            <option key={subj} value={subj}>{subj}</option>
                         ))}
                     </select>
                     <span className="material-symbols-outlined absolute left-3 top-2.5 text-slate-500 pointer-events-none text-lg">book</span>
-                    <span className="material-symbols-outlined absolute right-2 top-3 text-slate-400 pointer-events-none text-sm">expand_more</span>
+                    {!isSubjectLocked && <span className="material-symbols-outlined absolute right-2 top-3 text-slate-400 pointer-events-none text-sm">expand_more</span>}
+                    {isSubjectLocked && <span className="material-symbols-outlined absolute right-2 top-3 text-slate-400 pointer-events-none text-sm">lock</span>}
                 </div>
             </div>
           </div>
       </div>
 
+      {/* Warning Banner for History Mode */}
+      {isHistoryMode && (
+          <div className="bg-orange-50 border border-orange-200 text-orange-800 px-4 py-3 rounded-xl mb-4 flex items-center gap-3 animate-in fade-in slide-in-from-top-2">
+              <span className="material-symbols-outlined">history</span>
+              <p className="text-sm font-medium">
+                  <strong>Mode Arsip:</strong> Anda sedang melihat data Semester {selectedSemester}. Sistem saat ini berjalan di Semester {currentSystemSemester}.
+              </p>
+          </div>
+      )}
+
       {/* Tabs Switcher - ALWAYS VISIBLE */}
-      <div className="flex gap-2 mb-0 border-b border-slate-200">
-          <button 
-            onClick={() => setters.setActiveTab('SUMMATIVE')}
-            className={`relative px-6 py-3 text-sm font-bold rounded-t-xl transition-all flex items-center gap-2 border-t border-x
-                ${activeTab === 'SUMMATIVE' 
-                    ? 'bg-white text-purple-600 border-slate-200 border-b-white translate-y-[1px] shadow-[0_-2px_5px_rgba(0,0,0,0.02)]' 
-                    : 'bg-slate-50 text-slate-500 border-transparent hover:bg-slate-100'
-                }`}
-          >
-              <span className={`material-symbols-outlined ${activeTab === 'SUMMATIVE' ? 'filled' : ''}`}>equalizer</span>
-              Nilai Sumatif
-          </button>
-          <button 
-            onClick={() => setters.setActiveTab('FORMATIVE')}
-            className={`relative px-6 py-3 text-sm font-bold rounded-t-xl transition-all flex items-center gap-2 border-t border-x
-                ${activeTab === 'FORMATIVE' 
-                    ? 'bg-white text-blue-600 border-slate-200 border-b-white translate-y-[1px] shadow-[0_-2px_5px_rgba(0,0,0,0.02)]' 
-                    : 'bg-slate-50 text-slate-500 border-transparent hover:bg-slate-100'
-                }`}
-          >
-              <span className={`material-symbols-outlined ${activeTab === 'FORMATIVE' ? 'filled' : ''}`}>checklist</span>
-              Ceklis Formatif
-          </button>
+      <div className="flex gap-2 mb-0 border-b border-slate-200 justify-between items-center">
+          <div className="flex gap-2">
+            <button 
+                onClick={() => setters.setActiveTab('SUMMATIVE')}
+                className={`relative px-6 py-3 text-sm font-bold rounded-t-xl transition-all flex items-center gap-2 border-t border-x
+                    ${activeTab === 'SUMMATIVE' 
+                        ? 'bg-white text-purple-600 border-slate-200 border-b-white translate-y-[1px] shadow-[0_-2px_5px_rgba(0,0,0,0.02)]' 
+                        : 'bg-slate-50 text-slate-500 border-transparent hover:bg-slate-100'
+                    }`}
+            >
+                <span className={`material-symbols-outlined ${activeTab === 'SUMMATIVE' ? 'filled' : ''}`}>equalizer</span>
+                Nilai Sumatif
+            </button>
+            <button 
+                onClick={() => setters.setActiveTab('FORMATIVE')}
+                className={`relative px-6 py-3 text-sm font-bold rounded-t-xl transition-all flex items-center gap-2 border-t border-x
+                    ${activeTab === 'FORMATIVE' 
+                        ? 'bg-white text-blue-600 border-slate-200 border-b-white translate-y-[1px] shadow-[0_-2px_5px_rgba(0,0,0,0.02)]' 
+                        : 'bg-slate-50 text-slate-500 border-transparent hover:bg-slate-100'
+                    }`}
+            >
+                <span className={`material-symbols-outlined ${activeTab === 'FORMATIVE' ? 'filled' : ''}`}>checklist</span>
+                Ceklis Formatif
+            </button>
+          </div>
+
+          {/* Global Legend (Fix 2: Only show on Formative) - RESIZED BIGGER */}
+          {activeTab === 'FORMATIVE' && (
+              <div className="flex gap-2 text-sm font-medium mr-4">
+                    <span className="px-3 py-1 bg-red-50 text-red-600 rounded-lg border border-red-100">0-40: Perlu</span>
+                    <span className="px-3 py-1 bg-orange-50 text-orange-600 rounded-lg border border-orange-100">41-65: Cukup</span>
+                    <span className="px-3 py-1 bg-blue-50 text-blue-600 rounded-lg border border-blue-100">66-85: Baik</span>
+                    <span className="px-3 py-1 bg-green-50 text-green-600 rounded-lg border border-green-100">86+: S.Baik</span>
+              </div>
+          )}
       </div>
 
       {/* Main Table Area */}
@@ -166,58 +222,49 @@ export const GradingSheet: React.FC<Props> = (props) => {
                     <table className="w-full text-left border-collapse table-fixed">
                         <thead>
                             <tr className="bg-slate-50 border-b border-slate-200 text-slate-600">
-                                <th rowSpan={3} className="sticky-col bg-slate-50 w-12 px-2 py-3 text-xs font-bold text-center border-r border-slate-200 z-30">No</th>
-                                <th rowSpan={3} className="sticky-col-2 bg-slate-50 w-64 px-4 py-3 text-xs font-bold border-r border-slate-200 z-30 shadow-[4px_0_10px_-2px_rgba(0,0,0,0.05)]">
+                                <th className="sticky-col bg-slate-50 w-12 px-2 py-3 text-xs font-bold text-center border-r border-slate-200 z-30">No</th>
+                                <th className="sticky-col-2 bg-slate-50 w-64 px-4 py-3 text-xs font-bold border-r border-slate-200 z-30 shadow-[4px_0_10px_-2px_rgba(0,0,0,0.05)]">
                                     <div className="flex flex-col gap-1">
                                         <span>Nama Siswa</span>
                                     </div>
                                 </th>
                                 
-                                {/* 1. Scope Header (Top Level) */}
-                                {Object.entries(tpsByScope).map(([scope, scopeTps]) => {
-                                    const totalCriteria = scopeTps.reduce((acc, tp) => acc + tp.criteria.length, 0);
-                                    if(totalCriteria === 0) return null;
+                                {/* Fix 1 & 2: Iterate directly through filtered TPs, no Scope row */}
+                                {filteredTPs.map(tp => (
+                                    <th key={tp.id} className="w-40 px-2 py-3 border-r border-slate-200 text-center bg-blue-50/20 group relative cursor-help align-middle">
+                                        {/* Fix 4: Show only Code */}
+                                        <div className="inline-block px-3 py-1.5 bg-blue-100 text-blue-700 rounded-lg text-xs font-bold border border-blue-200 shadow-sm">
+                                            {tp.code}
+                                        </div>
 
-                                    return (
-                                        <th key={scope} colSpan={totalCriteria} className="px-4 py-2 text-center text-xs font-extrabold text-blue-700 bg-blue-50/50 border-r border-slate-200 border-b uppercase tracking-wider">
-                                            {scope}
-                                        </th>
-                                    );
-                                })}
-                            </tr>
-                            
-                            {/* 2. TP Header (Mid Level) */}
-                            <tr className="bg-slate-50 border-b border-slate-200">
-                                {Object.values(tpsByScope).map(scopeTps => (
-                                    scopeTps.map(tp => (
-                                        tp.criteria.length > 0 && (
-                                            <th key={tp.id} colSpan={tp.criteria.length} className="px-3 py-2 text-left text-[10px] font-bold text-slate-600 border-r border-slate-200 align-top bg-white min-w-[150px]">
-                                                <div className="flex flex-col gap-1">
-                                                    <span className="text-[9px] text-blue-500 font-mono bg-blue-50 w-fit px-1 rounded">{tp.code}</span>
-                                                    <span className="line-clamp-2 leading-tight" title={tp.description}>{tp.description}</span>
-                                                </div>
-                                            </th>
-                                        )
-                                    ))
+                                        {/* Fix 4: Rich Tooltip on Hover */}
+                                        <div className="absolute top-full left-1/2 -translate-x-1/2 w-72 bg-slate-800 text-white p-4 rounded-xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50 text-left pointer-events-none mt-2">
+                                            <div className="mb-2 border-b border-slate-600 pb-2">
+                                                <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Tujuan Pembelajaran:</p>
+                                                <p className="text-xs font-bold leading-snug">{tp.description}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Kriteria (KKTP):</p>
+                                                <ul className="space-y-1.5">
+                                                    {tp.criteria.map(cr => (
+                                                        <li key={cr.id} className="text-[10px] leading-tight flex gap-2">
+                                                            <span className="font-mono text-blue-300 shrink-0">{cr.code}:</span>
+                                                            <span className="text-slate-300">{cr.description}</span>
+                                                        </li>
+                                                    ))}
+                                                    {tp.criteria.length === 0 && <li className="text-[10px] italic text-slate-500">Belum ada kriteria</li>}
+                                                </ul>
+                                            </div>
+                                            {/* Arrow */}
+                                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 border-8 border-transparent border-b-slate-800"></div>
+                                        </div>
+                                    </th>
                                 ))}
-                            </tr>
-
-                            {/* 3. Criteria Header (Bottom Level) */}
-                            <tr className="bg-slate-50 border-b border-slate-200">
-                                {Object.values(tpsByScope).map(scopeTps => (
-                                    scopeTps.map(tp => (
-                                        tp.criteria.map((cr, idx) => (
-                                            <th key={cr.id} className="px-1 py-2 text-center w-16 border-r border-slate-200 bg-slate-50/30">
-                                                <div className="flex flex-col items-center group relative cursor-help">
-                                                    <span className="text-[10px] font-bold text-slate-500">K.{idx + 1}</span>
-                                                    <div className="absolute bottom-full mb-2 hidden group-hover:block w-48 bg-slate-800 text-white text-[10px] p-2 rounded shadow-lg z-50 text-left">
-                                                        {cr.description}
-                                                    </div>
-                                                </div>
-                                            </th>
-                                        ))
-                                    ))
-                                ))}
+                                {filteredTPs.length === 0 && (
+                                    <th className="px-6 py-4 text-xs font-bold text-slate-400 italic bg-slate-50">
+                                        Tidak ada TP untuk semester {selectedSemester} di mapel ini.
+                                    </th>
+                                )}
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
@@ -229,34 +276,37 @@ export const GradingSheet: React.FC<Props> = (props) => {
                                         <p className="text-[10px] text-slate-400 font-mono">{student.nis}</p>
                                     </td>
                                     
-                                    {Object.values(tpsByScope).map(scopeTps => (
-                                        scopeTps.map(tp => (
-                                            tp.criteria.map(cr => {
-                                                const isChecked = props.globalGradeData[student.id]?.formative?.[cr.id] || false;
-                                                return (
-                                                    <td key={cr.id} className="p-0 border-r border-slate-100 text-center relative">
-                                                        <label className="flex items-center justify-center w-full h-full min-h-[44px] cursor-pointer hover:bg-blue-100/50 transition-colors">
-                                                            <input 
-                                                                type="checkbox" 
-                                                                className="hidden peer"
-                                                                checked={isChecked}
-                                                                onChange={(e) => handlers.handleFormativeCheck(student.id, cr.id, e.target.checked)}
-                                                            />
-                                                            <div className={`
-                                                                size-5 rounded border flex items-center justify-center transition-all duration-200
-                                                                ${isChecked 
-                                                                    ? 'bg-blue-500 border-blue-500 text-white scale-110 shadow-sm' 
-                                                                    : 'bg-white border-slate-300 text-transparent'
-                                                                }
-                                                            `}>
-                                                                <span className="material-symbols-outlined text-sm font-bold">check</span>
-                                                            </div>
-                                                        </label>
-                                                    </td>
-                                                );
-                                            })
-                                        ))
-                                    ))}
+                                    {/* Score Cells per TP */}
+                                    {filteredTPs.map(tp => {
+                                        const score = props.globalGradeData[student.id]?.formative?.[tp.id] ?? '';
+                                        const numericScore = typeof score === 'number' ? score : 0;
+                                        const { label, color } = getQualitativeLabel(numericScore);
+                                        const hasScore = score !== '';
+
+                                        return (
+                                            <td key={tp.id} className="p-3 border-r border-slate-100 align-middle">
+                                                <div className="flex flex-col gap-2 items-center">
+                                                    {/* Numeric Input */}
+                                                    <input 
+                                                        type="number"
+                                                        min="0" max="100"
+                                                        className="w-16 h-9 border border-slate-200 rounded-lg text-center font-bold text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-800 shadow-sm"
+                                                        placeholder="0"
+                                                        value={score}
+                                                        onChange={(e) => handlers.handleFormativeScore(student.id, tp.id, e.target.value)}
+                                                        onFocus={handleScoreInputFocus}
+                                                    />
+                                                    {/* Qualitative Label (Small) */}
+                                                    {hasScore && (
+                                                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${color}`}>
+                                                            {label}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </td>
+                                        );
+                                    })}
+                                    {filteredTPs.length === 0 && <td></td>}
                                 </tr>
                             ))}
                         </tbody>
@@ -275,30 +325,67 @@ export const GradingSheet: React.FC<Props> = (props) => {
                                     Identitas Siswa
                                 </th>
                                 
-                                {/* Dynamic Scope Columns */}
-                                {uniqueScopes.length > 0 ? uniqueScopes.map(scope => (
-                                    <th key={scope} className="w-40 px-4 py-3 text-xs font-bold text-slate-700 text-center border-r border-slate-200 uppercase bg-purple-50/30">
-                                        <div className="line-clamp-2" title={scope}>{scope}</div>
-                                    </th>
-                                )) : (
+                                {/* New Column: Rerata Formatif */}
+                                <th className="w-32 px-4 py-3 text-xs font-bold text-blue-700 text-center border-r border-slate-200 bg-blue-50">
+                                    Rata-rata Formatif
+                                </th>
+
+                                {uniqueScopes.length > 0 ? uniqueScopes.map((scope, index) => {
+                                    // Cari TP yang terkait dengan Scope ini
+                                    const relatedTPs = tpsByScope[scope] || [];
+                                    const shortCode = `LM ${index + 1}`; // Kode Singkat
+
+                                    return (
+                                        <th key={scope} className="w-32 px-4 py-3 text-center border-r border-slate-200 bg-purple-50/30 group relative cursor-help align-top">
+                                            {/* Header Content (Short Code) */}
+                                            <div className="flex flex-col items-center gap-1">
+                                                <span className="text-xs font-bold text-purple-700 bg-white px-2 py-1 rounded border border-purple-200 shadow-sm">{shortCode}</span>
+                                                <span className="text-[10px] text-slate-500 font-mono mt-1">{relatedTPs.length} TP</span>
+                                            </div>
+
+                                            {/* Fix 5: Tooltip Visibility & Content */}
+                                            <div className="absolute top-full left-1/2 -translate-x-1/2 w-72 bg-slate-800 text-white p-4 rounded-xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50 text-left pointer-events-none mt-2">
+                                                <div className="mb-2 border-b border-slate-600 pb-2">
+                                                    <p className="text-[10px] font-bold text-slate-400 uppercase">Lingkup Materi:</p>
+                                                    <p className="text-sm font-bold leading-tight text-white">{scope}</p>
+                                                </div>
+                                                <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">TP Terkait:</p>
+                                                <ul className="space-y-1.5 max-h-40 overflow-y-auto custom-scrollbar pr-1">
+                                                    {relatedTPs.map(tp => (
+                                                        <li key={tp.id} className="text-[10px] leading-snug flex gap-2">
+                                                            <span className="font-mono text-purple-300 shrink-0">{tp.code}:</span>
+                                                            <span className="text-slate-300">{tp.description}</span>
+                                                        </li>
+                                                    ))}
+                                                    {relatedTPs.length === 0 && <li className="text-[10px] italic text-slate-500">Tidak ada TP</li>}
+                                                </ul>
+                                                {/* Arrow */}
+                                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 border-8 border-transparent border-b-slate-800"></div>
+                                            </div>
+                                        </th>
+                                    );
+                                }) : (
                                     <th className="w-64 px-4 py-3 text-xs font-bold text-red-400 text-center border-r border-slate-200 italic">
                                         Belum ada TP / Lingkup Materi
                                     </th>
                                 )}
                                 
-                                {/* Fixed Columns */}
-                                <th className="w-32 px-4 py-3 text-xs font-black text-purple-700 text-center border-r border-slate-200 bg-purple-50">
+                                {/* New Column: Rerata Sumatif */}
+                                <th className="w-32 px-4 py-3 text-xs font-bold text-purple-700 text-center border-r border-slate-200 bg-purple-50">
+                                    Rata-rata Sumatif
+                                </th>
+
+                                <th className="w-32 px-4 py-3 text-xs font-black text-slate-800 text-center border-r border-slate-200 bg-slate-100">
                                     Nilai Akhir
                                 </th>
                                 <th className="w-40 px-4 py-3 text-xs font-bold text-slate-600 text-center">
-                                    Status
+                                    Status (KKTP {currentKktp})
                                 </th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                             {filteredStudents.map((student, index) => {
-                                // Calculate grade using Filtered TPs (matching the selected subject)
-                                const result = calculateStudentGrade(student.id, props.globalGradeData, filteredTPs, props.subject.kktp);
+                                const result = calculateStudentGrade(student.id, props.globalGradeData, filteredTPs, currentKktp);
                                 return (
                                     <tr key={student.id} className="group hover:bg-purple-50/20 transition-colors">
                                         <td className="sticky-col bg-white group-hover:bg-[#faf8fe] text-center text-xs text-slate-500 border-r border-slate-100 font-medium">{index + 1}</td>
@@ -307,26 +394,25 @@ export const GradingSheet: React.FC<Props> = (props) => {
                                             <p className="text-[10px] text-slate-400 font-mono">{student.nis}</p>
                                         </td>
                                         
-                                        {/* Score Inputs by Scope */}
+                                        {/* Display Avg Formative */}
+                                        <td className="px-4 text-center border-r border-slate-100 bg-blue-50/20">
+                                            <span className="text-sm font-bold text-blue-700">{result.avgFormative || 0}</span>
+                                        </td>
+
                                         {uniqueScopes.length > 0 ? uniqueScopes.map(scope => {
                                             const score = props.globalGradeData[student.id]?.summative?.[scope] ?? '';
                                             return (
                                                 <td key={scope} className="p-0 border-r border-slate-100 relative">
-                                                    <div className="relative w-full h-full">
+                                                    <div className="relative w-full h-full p-2">
                                                         <input 
                                                             type="number" 
                                                             min="0" max="100"
-                                                            className="w-full h-12 border-none bg-transparent text-center text-sm font-bold focus:ring-0 focus:bg-purple-100 focus:text-purple-700 text-slate-800 placeholder-slate-200 transition-colors"
+                                                            className="w-full h-10 border border-slate-200 rounded-lg bg-transparent text-center text-sm font-bold focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-slate-800 placeholder-slate-200 transition-colors"
                                                             value={score}
                                                             onChange={(e) => handlers.handleSummativeScore(student.id, scope, e.target.value)}
                                                             placeholder="0"
-                                                            onFocus={(e) => e.target.select()}
+                                                            onFocus={handleScoreInputFocus}
                                                         />
-                                                        {score === '' && (
-                                                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-0 group-hover:opacity-100">
-                                                                <span className="material-symbols-outlined text-slate-200 text-lg">edit</span>
-                                                            </div>
-                                                        )}
                                                     </div>
                                                 </td>
                                             );
@@ -334,14 +420,17 @@ export const GradingSheet: React.FC<Props> = (props) => {
                                             <td className="bg-slate-50"></td>
                                         )}
 
-                                        {/* Final Result */}
-                                        <td className="px-4 text-center bg-purple-50 border-r border-slate-200">
-                                            <span className={`text-lg font-black ${result.finalScore >= props.subject.kktp ? 'text-green-600' : 'text-red-500'}`}>
+                                        {/* Display Avg Summative */}
+                                        <td className="px-4 text-center border-r border-slate-100 bg-purple-50/20">
+                                            <span className="text-sm font-bold text-purple-700">{result.avgSummative || 0}</span>
+                                        </td>
+
+                                        <td className="px-4 text-center bg-slate-100 border-r border-slate-200">
+                                            <span className={`text-lg font-black ${result.finalScore >= currentKktp ? 'text-green-600' : 'text-red-500'}`}>
                                                 {result.finalScore || '-'}
                                             </span>
                                         </td>
 
-                                        {/* Status Column (Restored) */}
                                         <td className="px-4 text-center">
                                             {result.finalScore > 0 && (
                                                 <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border
@@ -363,7 +452,6 @@ export const GradingSheet: React.FC<Props> = (props) => {
                 </div>
             )}
 
-            {/* Footer Stats & Info */}
             <div className="bg-slate-50 border-t border-slate-200 px-6 py-4 flex flex-col md:flex-row justify-between items-center text-xs font-medium text-slate-500 gap-4">
                 <div className="flex gap-6 items-center">
                     <div className="flex items-center gap-2">
@@ -377,7 +465,7 @@ export const GradingSheet: React.FC<Props> = (props) => {
                                 <span className="bg-purple-100 text-purple-700 px-2 py-1 rounded text-[10px] font-bold">RATA-RATA</span>
                                 <span className="text-purple-700 font-bold text-sm">
                                     {filteredStudents.length > 0 ? 
-                                        (filteredStudents.reduce((acc, s) => acc + calculateStudentGrade(s.id, props.globalGradeData, filteredTPs, props.subject.kktp).finalScore, 0) / filteredStudents.length).toFixed(1) 
+                                        (filteredStudents.reduce((acc, s) => acc + calculateStudentGrade(s.id, props.globalGradeData, filteredTPs, currentKktp).finalScore, 0) / filteredStudents.length).toFixed(1) 
                                         : '0'
                                     }
                                 </span>
@@ -396,12 +484,11 @@ export const GradingSheet: React.FC<Props> = (props) => {
                 
                 <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded border border-slate-200 shadow-sm">
                     <span className="material-symbols-outlined text-blue-500 text-sm">info</span>
-                    <span>Nilai Akhir adalah rata-rata dari seluruh lingkup materi.</span>
+                    <span>Nilai Akhir = (Rata-rata Formatif * 40%) + (Rata-rata Sumatif * 50%) + (Sikap * 10%)</span>
                 </div>
             </div>
         </div>
       ) : (
-        // Empty State (Updated with Tab Context)
         <div className="bg-white border border-t-0 border-slate-200 rounded-b-xl rounded-tr-xl p-12 flex flex-col items-center justify-center text-slate-400 min-h-[400px] shadow-sm animate-in fade-in slide-in-from-bottom-4">
              <div className={`p-6 rounded-full mb-4 ring-8 ring-opacity-50 text-4xl ${activeTab === 'FORMATIVE' ? 'bg-blue-50 text-blue-400 ring-blue-50' : 'bg-purple-50 text-purple-400 ring-purple-50'}`}>
                 <span className="material-symbols-outlined text-5xl">{activeTab === 'FORMATIVE' ? 'checklist' : 'equalizer'}</span>
@@ -415,7 +502,6 @@ export const GradingSheet: React.FC<Props> = (props) => {
         </div>
       )}
       
-      {/* System Status Footer */}
       <div className="mt-6 flex justify-between items-center text-[10px] uppercase tracking-widest text-slate-400 font-bold">
         <div className="flex items-center gap-2">
             <div className="relative">

@@ -19,7 +19,7 @@ const DAY_NAMES = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu
 export const CalendarManager: React.FC<Props> = (props) => {
   const { state, computed, handlers } = useCalendarLogic(props);
   const { currentDate, isModalOpen, formData, selectedDate } = state;
-  const { monthData, selectedDayEvents } = computed;
+  const { monthData, selectedDayEvents, toLocalISO } = computed;
 
   const getEventTypeColor = (type: EventType) => {
       switch (type) {
@@ -83,9 +83,11 @@ export const CalendarManager: React.FC<Props> = (props) => {
                   {monthData.map((date, index) => {
                       if (!date) return <div key={`empty-${index}`} className="bg-white/50"></div>;
                       
-                      const dateStr = date.toISOString().split('T')[0];
+                      // USE LOCAL ISO STRING FOR COMPARISON
+                      const dateStr = toLocalISO(date);
+                      
                       const dayEvents = props.events.filter(e => e.date === dateStr);
-                      const isToday = new Date().toISOString().split('T')[0] === dateStr;
+                      const isToday = toLocalISO(new Date()) === dateStr;
                       const isWeekend = date.getDay() === 0;
 
                       return (

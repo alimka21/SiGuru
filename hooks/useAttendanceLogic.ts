@@ -1,6 +1,6 @@
 
 import { useState, useMemo, useEffect } from 'react';
-import { Student, AttendanceData, AttendanceStatus, ScheduleItem } from '../types';
+import { Student, AttendanceData, AttendanceStatus, ScheduleItem, IdentityData } from '../types';
 
 declare const Swal: any;
 
@@ -15,6 +15,7 @@ interface UseAttendanceLogicProps {
   setGlobalAttendance: React.Dispatch<React.SetStateAction<AttendanceData>>;
   initialClass?: string;
   initialScheduleId?: string;
+  identity?: IdentityData; // Added Identity for Role check
 }
 
 export const useAttendanceLogic = ({
@@ -23,7 +24,8 @@ export const useAttendanceLogic = ({
   globalAttendance,
   setGlobalAttendance,
   initialClass,
-  initialScheduleId
+  initialScheduleId,
+  identity
 }: UseAttendanceLogicProps) => {
   // --- STATE ---
   const [currentSessionData, setCurrentSessionData] = useState<{[studentId: string]: AttendanceStatus}>({});
@@ -33,21 +35,30 @@ export const useAttendanceLogic = ({
   const [selectedScheduleId, setSelectedScheduleId] = useState<string>('');
   const [selectedDate, setSelectedDate] = useState<string>('');
 
+  // POINT 2: Check if Class Teacher (Daily Attendance Mode)
+  const isClassTeacher = identity?.role === 'CLASS_TEACHER';
+
   // --- COMPUTED ---
 
   // 1. Get Unique Classes
   const availableClasses = useMemo(() => {
+    // If Class Teacher, they might only see their assigned class if implemented, 
+    // but here we just list all relevant classes from schedule or student list
     const classes = new Set(schedules.map(s => s.className));
+    // Also include classes from student list if schedule is empty (for Class Teacher setup)
+    if (isClassTeacher) {
+        students.forEach(s => { if(s.className) classes.add(s.className) });
+    }
     return Array.from(classes).sort();
-  }, [schedules]);
+  }, [schedules, students, isClassTeacher]);
 
-  // 2. Filter Schedules
+  // 2. Filter Schedules (Only relevant for Subject Teacher)
   const availableSchedules = useMemo(() => {
-    if (!selectedClass) return [];
+    if (!selectedClass || isClassTeacher) return [];
     return schedules
         .filter(s => s.className === selectedClass)
         .sort((a, b) => a.day.localeCompare(b.day));
-  }, [selectedClass, schedules]);
+  }, [selectedClass, schedules, isClassTeacher]);
 
   // 3. Filter Students
   const filteredStudents = useMemo(() => {
@@ -55,8 +66,24 @@ export const useAttendanceLogic = ({
     return students.filter(s => s.className === selectedClass || !s.className);
   }, [selectedClass, students]);
 
-  // 4. Generate Dates based on Schedule Routine
+  // 4. Generate Dates based on Schedule Routine OR Daily for Class Teacher
   const generatedDates = useMemo(() => {
+      // IF CLASS TEACHER: Generate all weekdays for the last 60 days
+      if (isClassTeacher) {
+          const dates: string[] = [];
+          const today = new Date();
+          for (let i = 0; i < 60; i++) {
+              const d = new Date();
+              d.setDate(today.getDate() - i);
+              const day = d.getDay();
+              if (day !== 0) { // Exclude Sunday
+                  dates.push(d.toISOString().split('T')[0]);
+              }
+          }
+          return dates;
+      }
+
+      // IF SUBJECT TEACHER: Generate based on schedule day
       if (!selectedScheduleId) return [];
       
       const schedule = schedules.find(s => s.id === selectedScheduleId);
@@ -66,7 +93,6 @@ export const useAttendanceLogic = ({
       const dates: string[] = [];
       const today = new Date();
       
-      // Look back 8 weeks (approx 2 months of routine)
       for (let i = 0; i < 60; i++) {
           const d = new Date();
           d.setDate(today.getDate() - i);
@@ -75,35 +101,41 @@ export const useAttendanceLogic = ({
           }
       }
       return dates;
-  }, [selectedScheduleId, schedules]);
+  }, [selectedScheduleId, schedules, isClassTeacher]);
 
   // 5. Helper to check if date is saved
+  // For Class Teacher, we use a virtual schedule ID prefix "daily-"
+  const effectiveScheduleId = useMemo(() => {
+      if (isClassTeacher && selectedClass) return `daily-${selectedClass}`;
+      return selectedScheduleId;
+  }, [isClassTeacher, selectedClass, selectedScheduleId]);
+
   const isSaved = (date: string) => {
-      return !!globalAttendance[selectedScheduleId]?.[date];
+      return !!globalAttendance[effectiveScheduleId]?.[date];
   };
 
   // --- EFFECTS ---
 
-  // Initialization & Navigation Handling
+  // Initialization
   useEffect(() => {
     if (initialClass) setSelectedClass(initialClass);
-    if (initialScheduleId) setSelectedScheduleId(initialScheduleId);
-  }, [initialClass, initialScheduleId]);
+    if (initialScheduleId && !isClassTeacher) setSelectedScheduleId(initialScheduleId);
+  }, [initialClass, initialScheduleId, isClassTeacher]);
 
-  // Auto-select "Today" if it matches schedule
+  // Auto-select "Today"
   useEffect(() => {
-      if (generatedDates.length > 0) {
+      if (generatedDates.length > 0 && !selectedDate) {
           const todayStr = new Date().toISOString().split('T')[0];
           if (generatedDates.includes(todayStr)) {
               setSelectedDate(todayStr);
           }
       }
-  }, [generatedDates]);
+  }, [generatedDates, selectedDate]);
 
-  // Load Data when Date/Schedule Changes
+  // Load Data
   useEffect(() => {
-      if (selectedScheduleId && selectedDate) {
-          const savedData = globalAttendance[selectedScheduleId]?.[selectedDate];
+      if (effectiveScheduleId && selectedDate) {
+          const savedData = globalAttendance[effectiveScheduleId]?.[selectedDate];
           if (savedData) {
               const flatData: any = {};
               Object.keys(savedData).forEach(sid => {
@@ -114,7 +146,7 @@ export const useAttendanceLogic = ({
               setCurrentSessionData({});
           }
       }
-  }, [selectedScheduleId, selectedDate, globalAttendance]);
+  }, [effectiveScheduleId, selectedDate, globalAttendance]);
 
   // --- HANDLERS ---
 
@@ -129,11 +161,11 @@ export const useAttendanceLogic = ({
   }
 
   const handleSave = () => {
-      if (!selectedScheduleId || !selectedDate) return;
+      if (!effectiveScheduleId || !selectedDate) return;
 
       Swal.fire({
           title: 'Simpan Presensi?',
-          text: `Data kehadiran untuk tanggal ${selectedDate} akan disimpan ke database.`,
+          text: `Data kehadiran untuk tanggal ${selectedDate} akan disimpan.`,
           icon: 'question',
           showCancelButton: true,
           confirmButtonText: 'Ya, Simpan',
@@ -150,8 +182,8 @@ export const useAttendanceLogic = ({
 
              setGlobalAttendance(prev => ({
                  ...prev,
-                 [selectedScheduleId]: {
-                     ...(prev[selectedScheduleId] || {}),
+                 [effectiveScheduleId]: {
+                     ...(prev[effectiveScheduleId] || {}),
                      [selectedDate]: recordsToSave
                  }
              }));
@@ -164,7 +196,7 @@ export const useAttendanceLogic = ({
   return {
     state: { currentSessionData, selectedClass, selectedScheduleId, selectedDate },
     setters: { setSelectedClass, setSelectedScheduleId, setSelectedDate },
-    computed: { availableClasses, availableSchedules, filteredStudents, generatedDates, isSaved },
+    computed: { availableClasses, availableSchedules, filteredStudents, generatedDates, isSaved, isClassTeacher },
     handlers: { handleStatusChange, markAll, handleSave }
   };
 };

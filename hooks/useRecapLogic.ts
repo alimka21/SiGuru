@@ -1,7 +1,7 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import ExcelJS from 'exceljs';
-import { Student, Subject, IdentityData, AttendanceData, GradeData, LearningObjective } from '../types';
+import { Student, Subject, IdentityData, AttendanceData, GradeData, LearningObjective, SUBJECTS_DATA } from '../types';
 import { calculateStudentGrade } from '../utils/grading';
 
 declare const Swal: any;
@@ -9,42 +9,6 @@ declare const Swal: any;
 const MONTH_NAMES = [
     'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
     'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
-];
-
-// ... (Subject Definitions remain same) ...
-// Daftar Mapel SD (Guru Kelas) - ID menggunakan Nama
-const SD_SUBJECTS = [
-    { id: 'Bahasa Indonesia', name: 'Bahasa Indonesia' },
-    { id: 'Matematika', name: 'Matematika' },
-    { id: 'IPAS', name: 'Ilmu Pengetahuan Alam dan Sosial (IPAS)' },
-    { id: 'Pendidikan Pancasila', name: 'Pendidikan Pancasila' },
-    { id: 'Seni Budaya', name: 'Seni Budaya' },
-    { id: 'PJOK', name: 'PJOK' },
-    { id: 'Bahasa Inggris', name: 'Bahasa Inggris' },
-    { id: 'Muatan Lokal', name: 'Muatan Lokal' }
-];
-
-// Daftar Mapel SMP/SMA (Guru Mapel) - ID menggunakan s1, s2, dst (Sesuai GradingSheet)
-const SECONDARY_SUBJECTS = [
-    { id: 's1', name: 'Matematika' },
-    { id: 's2', name: 'Fisika' },
-    { id: 's3', name: 'Kimia' },
-    { id: 's4', name: 'Biologi' },
-    { id: 's5', name: 'Bahasa Indonesia' },
-    { id: 's6', name: 'Bahasa Inggris' },
-    { id: 's7', name: 'Sejarah' },
-    { id: 's8', name: 'Geografi' },
-    { id: 's9', name: 'Sosiologi' },
-    { id: 's10', name: 'Ekonomi' },
-    { id: 's11', name: 'Pendidikan Pancasila' },
-    { id: 's12', name: 'Informatika' },
-    { id: 's13', name: 'PJOK' },
-    { id: 's14', name: 'Seni Budaya' },
-    { id: 's15', name: 'PAI' },
-    { id: 's16', name: 'PAK' },
-    { id: 's17', name: 'BK' },
-    { id: 's18', name: 'IPA' },
-    { id: 's19', name: 'IPS' },
 ];
 
 interface UseRecapLogicProps {
@@ -67,24 +31,32 @@ export const useRecapLogic = ({
   tps
 }: UseRecapLogicProps) => {
   
+  const isClassTeacher = identity.role === 'CLASS_TEACHER';
+
   const availableSubjects = useMemo(() => {
-      if (identity.level === 'SD' || identity.role === 'CLASS_TEACHER') {
-          return SD_SUBJECTS;
+      if (identity.level === 'SD') {
+          return identity.role === 'CLASS_TEACHER' ? SUBJECTS_DATA.SD.CLASS_TEACHER : SUBJECTS_DATA.SD.SUBJECT_TEACHER;
+      } else if (identity.level === 'SMP') {
+          return SUBJECTS_DATA.SMP;
+      } else {
+          return SUBJECTS_DATA.SMA_SMK;
       }
-      return SECONDARY_SUBJECTS;
   }, [identity.level, identity.role]);
 
+  // Lock Subject for Subject Teacher
   const defaultSubjectId = useMemo(() => {
       if (identity.role === 'SUBJECT_TEACHER' && identity.subjectName) {
-          const found = availableSubjects.find(s => s.name.toLowerCase() === identity.subjectName.toLowerCase());
-          return found ? found.id : availableSubjects[0]?.id;
+          return identity.subjectName; 
       }
-      return availableSubjects[0]?.id;
+      return availableSubjects[0];
   }, [identity, availableSubjects]);
 
   const [selectedClass, setSelectedClass] = useState<string>('');
   const [selectedSubject, setSelectedSubject] = useState<string>(defaultSubjectId);
   const [selectedMonth, setSelectedMonth] = useState<string>(new Date().getMonth().toString());
+  
+  // Point 3: Weights State
+  const [weights, setWeights] = useState({ formative: 40, summative: 60 });
 
   useEffect(() => {
       if (defaultSubjectId) {
@@ -99,36 +71,102 @@ export const useRecapLogic = ({
 
   const filteredStudents = useMemo(() => {
     if (!selectedClass) return [];
-    return students.filter(s => s.className === selectedClass);
+    return students.filter(s => s.className === selectedClass).sort((a, b) => a.name.localeCompare(b.name));
   }, [students, selectedClass]);
+
+  // Generate days in month for matrix
+  const daysInMonth = useMemo(() => {
+      const year = new Date().getFullYear(); 
+      const month = parseInt(selectedMonth);
+      const days = new Date(year, month + 1, 0).getDate();
+      return Array.from({length: days}, (_, i) => i + 1);
+  }, [selectedMonth]);
+
+  // Point 5: Ledger Data Logic (Only for Class Teacher Mode)
+  const ledgerData = useMemo(() => {
+      if (!isClassTeacher || mode !== 'GRADES') return [];
+
+      return filteredStudents.map(student => {
+          const subjectGrades: Record<string, number> = {};
+          
+          availableSubjects.forEach(subName => {
+              // Filter TPs for this specific subject
+              const subjectTPs = tps.filter(tp => tp.subjectId === subName);
+              // Calculate grade using current dynamic weights
+              const res = calculateStudentGrade(student.id, gradeData, subjectTPs, subject.kktp, weights);
+              subjectGrades[subName] = res.finalScore;
+          });
+
+          return {
+              ...student,
+              subjectGrades
+          };
+      });
+  }, [isClassTeacher, mode, filteredStudents, availableSubjects, tps, gradeData, subject.kktp, weights]);
+
 
   const reportData = useMemo(() => {
     return filteredStudents.map(student => {
         let totalStats = { present: 0, permit: 0, sick: 0, absent: 0, meetings: 0 };
         let monthlyStats = { present: 0, permit: 0, sick: 0, absent: 0, meetings: 0 };
+        const dailyStatus: Record<number, string> = {};
 
-        Object.keys(globalAttendance).forEach(schId => {
-            const datesObj = globalAttendance[schId];
-            Object.keys(datesObj).forEach(dateStr => {
-                const record = datesObj[dateStr][student.id];
-                if (record) {
-                    totalStats.meetings++;
-                    if (record.status === 'H') totalStats.present++;
-                    else if (record.status === 'I') totalStats.permit++;
-                    else if (record.status === 'S') totalStats.sick++;
-                    else if (record.status === 'A') totalStats.absent++;
-
+        // ATTENDANCE LOGIC
+        if (mode === 'ATTENDANCE') {
+            if (isClassTeacher) {
+                // Look up 'daily-{selectedClass}'
+                const scheduleId = `daily-${selectedClass}`;
+                const datesObj = globalAttendance[scheduleId] || {};
+                
+                Object.keys(datesObj).forEach(dateStr => {
                     const recordDate = new Date(dateStr);
-                    if (recordDate.getMonth() === parseInt(selectedMonth)) {
-                        monthlyStats.meetings++;
-                        if (record.status === 'H') monthlyStats.present++;
-                        else if (record.status === 'I') monthlyStats.permit++;
-                        else if (record.status === 'S') monthlyStats.sick++;
-                        else if (record.status === 'A') monthlyStats.absent++;
+                    const record = datesObj[dateStr][student.id];
+                    
+                    if (record) {
+                        totalStats.meetings++;
+                        if (record.status === 'H') totalStats.present++;
+                        else if (record.status === 'I') totalStats.permit++;
+                        else if (record.status === 'S') totalStats.sick++;
+                        else if (record.status === 'A') totalStats.absent++;
+
+                        if (recordDate.getMonth() === parseInt(selectedMonth)) {
+                            monthlyStats.meetings++;
+                            const day = recordDate.getDate();
+                            dailyStatus[day] = record.status; // Fill Matrix
+                            
+                            if (record.status === 'H') monthlyStats.present++;
+                            else if (record.status === 'I') monthlyStats.permit++;
+                            else if (record.status === 'S') monthlyStats.sick++;
+                            else if (record.status === 'A') monthlyStats.absent++;
+                        }
                     }
-                }
-            });
-        });
+                });
+            } else {
+                // Subject Teacher Logic
+                Object.keys(globalAttendance).forEach(schId => {
+                    const datesObj = globalAttendance[schId];
+                    Object.keys(datesObj).forEach(dateStr => {
+                        const record = datesObj[dateStr][student.id];
+                        if (record) {
+                            totalStats.meetings++;
+                            if (record.status === 'H') totalStats.present++;
+                            else if (record.status === 'I') totalStats.permit++;
+                            else if (record.status === 'S') totalStats.sick++;
+                            else if (record.status === 'A') totalStats.absent++;
+
+                            const recordDate = new Date(dateStr);
+                            if (recordDate.getMonth() === parseInt(selectedMonth)) {
+                                monthlyStats.meetings++;
+                                if (record.status === 'H') monthlyStats.present++;
+                                else if (record.status === 'I') monthlyStats.permit++;
+                                else if (record.status === 'S') monthlyStats.sick++;
+                                else if (record.status === 'A') monthlyStats.absent++;
+                            }
+                        }
+                    });
+                });
+            }
+        }
 
         const totalPercentage = totalStats.meetings > 0 
             ? Math.round((totalStats.present / totalStats.meetings) * 100) 
@@ -138,36 +176,43 @@ export const useRecapLogic = ({
             ? Math.round((monthlyStats.present / monthlyStats.meetings) * 100)
             : 0;
 
-        const gradeResult = calculateStudentGrade(student.id, gradeData, tps, subject.kktp);
-        const attitudeScore = gradeData[student.id]?.attitude || 0;
-
+        // GRADES LOGIC (Single Subject View)
+        // If Class Teacher is viewing this "standard" reportData, it relies on selectedSubject.
+        // But for Class Teacher we usually use `ledgerData` above for the main view.
+        // We keep this for Subject Teachers OR if Class Teacher wants detailed breakdown of 1 subject.
+        
+        // Filter TPs based on Selected Subject
+        const subjectTPs = tps.filter(tp => tp.subjectId === selectedSubject);
+        
+        // Pass weights
+        const gradeResult = calculateStudentGrade(student.id, gradeData, subjectTPs, subject.kktp, weights); 
+        
         return {
             ...student,
             grades: { 
                 formative: gradeResult.avgFormative, 
                 summative: gradeResult.avgSummative, 
-                attitude: attitudeScore, 
                 finalScore: gradeResult.finalScore, 
                 isPassed: gradeResult.isPassed 
             },
             attendance: { 
                 total: { ...totalStats, percentage: totalPercentage },
-                monthly: { ...monthlyStats, percentage: monthlyPercentage }
+                monthly: { ...monthlyStats, percentage: monthlyPercentage },
+                daily: dailyStatus
             }
         };
     });
-  }, [filteredStudents, subject.kktp, globalAttendance, selectedMonth, gradeData, tps, selectedSubject]);
+  }, [filteredStudents, subject.kktp, globalAttendance, selectedMonth, gradeData, tps, selectedSubject, mode, isClassTeacher, selectedClass, weights]);
 
   const handleExportExcel = async () => {
-    if (reportData.length === 0) return;
+    if (filteredStudents.length === 0) return;
 
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet(mode === 'GRADES' ? 'Rekap Nilai' : 'Rekap Presensi');
     const monthName = MONTH_NAMES[parseInt(selectedMonth)];
-    
-    const subjectName = availableSubjects.find(s => s.id === selectedSubject)?.name || 'Mata Pelajaran';
+    const subjectName = selectedSubject || 'Mata Pelajaran';
 
-    // Header Construction
+    // Header
     sheet.mergeCells('A1:I1');
     sheet.getCell('A1').value = identity.schoolName;
     sheet.getCell('A1').font = { size: 14, bold: true };
@@ -178,7 +223,7 @@ export const useRecapLogic = ({
     sheet.getCell('A2').font = { size: 12, bold: true };
     sheet.getCell('A2').alignment = { horizontal: 'center' };
 
-    sheet.addRow([`Kelas: ${selectedClass}`, '', '', '', `Mapel: ${subjectName}`]);
+    sheet.addRow([`Kelas: ${selectedClass}`, '', '', '', `Mapel: ${isClassTeacher && mode === 'GRADES' ? 'SEMUA (LEGER)' : subjectName}`]);
     sheet.addRow([`Tahun Ajaran: ${identity.academicYear}`, '', '', '', `Semester: ${identity.semester}`]);
     if (mode === 'ATTENDANCE') {
         sheet.addRow([`Bulan Laporan: ${monthName}`, '', '', '', '']);
@@ -188,98 +233,88 @@ export const useRecapLogic = ({
     let headerRowIndex = 0;
 
     if (mode === 'GRADES') {
-        const headerRow = sheet.addRow(['No', 'NIS', 'Nama Siswa', 'Rata-rata Formatif (40%)', 'Rata-rata Sumatif (50%)', 'Nilai Sikap (10%)', 'Nilai Akhir', 'Status', 'Keterangan']);
-        headerRowIndex = headerRow.number;
+        if (isClassTeacher) {
+            // LEGER HEADER
+            const headerRow = sheet.addRow(['No', 'NIS', 'Nama Siswa', ...availableSubjects, '']);
+            headerRowIndex = headerRow.number;
+        } else {
+            // SUBJECT HEADER
+            const headerRow = sheet.addRow(['No', 'NIS', 'Nama Siswa', `Rata-rata Formatif (${weights.formative}%)`, `Rata-rata Sumatif (${weights.summative}%)`, 'Nilai Akhir', 'Status']);
+            headerRowIndex = headerRow.number;
+        }
     } else {
-        const row1 = sheet.addRow(['No', 'NIS', 'Nama Siswa', `Rincian Bulan ${monthName}`, '', '', '', 'Total Akumulasi', '']);
-        const row2 = sheet.addRow(['', '', '', 'Hadir (H)', 'Izin (I)', 'Sakit (S)', 'Alfa (A)', 'Total Tatap Muka', 'Persentase (%)']);
-        headerRowIndex = row1.number;
-        sheet.mergeCells(`A${headerRowIndex}:A${headerRowIndex+1}`);
-        sheet.mergeCells(`B${headerRowIndex}:B${headerRowIndex+1}`);
-        sheet.mergeCells(`C${headerRowIndex}:C${headerRowIndex+1}`);
-        sheet.mergeCells(`D${headerRowIndex}:G${headerRowIndex}`);
-        sheet.mergeCells(`H${headerRowIndex}:I${headerRowIndex}`);
+        // Attendance Header Logic
+        if (isClassTeacher) {
+            // Matrix Header
+            const daysHeader = daysInMonth.map(d => d.toString());
+            const headerRow = sheet.addRow(['No', 'NIS', 'Nama Siswa', ...daysHeader, 'Total (S/I/A)', '% Kehadiran']);
+            headerRowIndex = headerRow.number;
+        } else {
+            // Summary Header
+            const row1 = sheet.addRow(['No', 'NIS', 'Nama Siswa', `Rincian Bulan ${monthName}`, '', '', '', 'Total Akumulasi', '']);
+            const row2 = sheet.addRow(['', '', '', 'Hadir (H)', 'Izin (I)', 'Sakit (S)', 'Alfa (A)', 'Total Tatap Muka', 'Persentase (%)']);
+            headerRowIndex = row1.number;
+            sheet.mergeCells(`A${headerRowIndex}:A${headerRowIndex+1}`);
+            sheet.mergeCells(`B${headerRowIndex}:B${headerRowIndex+1}`);
+            sheet.mergeCells(`C${headerRowIndex}:C${headerRowIndex+1}`);
+            sheet.mergeCells(`D${headerRowIndex}:G${headerRowIndex}`);
+            sheet.mergeCells(`H${headerRowIndex}:I${headerRowIndex}`);
+        }
     }
 
     const headerRow = sheet.getRow(headerRowIndex);
-    const subHeaderRow = mode === 'ATTENDANCE' ? sheet.getRow(headerRowIndex + 1) : null;
-    
-    [headerRow, subHeaderRow].forEach(row => {
-        if(!row) return;
-        row.eachCell((cell) => {
-            cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF137FEC' } };
-            cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
-            cell.border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} };
-        });
-    });
+    headerRow.font = { bold: true };
 
-    reportData.forEach((d, i) => {
-        let rowValues = [];
-        if (mode === 'GRADES') {
-            rowValues = [
-                i + 1, d.nis, d.name, 
-                d.grades.formative, d.grades.summative, d.grades.attitude, 
-                d.grades.finalScore, 
-                d.grades.isPassed ? 'TUNTAS' : 'REMEDIAL',
-                d.grades.isPassed ? 'Lulus KKTP' : 'Perlu Bimbingan'
-            ];
-        } else {
-            rowValues = [
-                i + 1, d.nis, d.name, 
-                d.attendance.monthly.present, d.attendance.monthly.permit, d.attendance.monthly.sick, d.attendance.monthly.absent,
-                d.attendance.total.meetings, `${d.attendance.total.percentage}%`
-            ];
-        }
-        
-        const row = sheet.addRow(rowValues);
-        row.eachCell((cell, colNumber) => {
-            cell.border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} };
-            if (colNumber === 1 || colNumber > 3) {
-                cell.alignment = { horizontal: 'center' };
+    if (mode === 'GRADES' && isClassTeacher) {
+        // LEGER ROWS
+        ledgerData.forEach((d, i) => {
+            const subjectScores = availableSubjects.map(sub => d.subjectGrades[sub] || 0);
+            sheet.addRow([i + 1, d.nis, d.name, ...subjectScores]);
+        });
+    } else {
+        // STANDARD ROWS
+        reportData.forEach((d, i) => {
+            let rowValues = [];
+            if (mode === 'GRADES') {
+                rowValues = [
+                    i + 1, d.nis, d.name, 
+                    d.grades.formative, d.grades.summative, 
+                    d.grades.finalScore, 
+                    d.grades.isPassed ? 'TUNTAS' : 'REMEDIAL'
+                ];
+            } else {
+                if (isClassTeacher) {
+                    const dailyCells = daysInMonth.map(day => d.attendance.daily[day] || '-');
+                    const summary = `${d.attendance.monthly.sick}/${d.attendance.monthly.permit}/${d.attendance.monthly.absent}`;
+                    rowValues = [i + 1, d.nis, d.name, ...dailyCells, summary, `${d.attendance.monthly.percentage}%`];
+                } else {
+                    rowValues = [
+                        i + 1, d.nis, d.name, 
+                        d.attendance.monthly.present, d.attendance.monthly.permit, d.attendance.monthly.sick, d.attendance.monthly.absent,
+                        d.attendance.total.meetings, `${d.attendance.total.percentage}%`
+                    ];
+                }
             }
+            sheet.addRow(rowValues);
         });
-
-        if (mode === 'GRADES') {
-            const statusCell = row.getCell(8);
-            statusCell.font = { bold: true, color: { argb: d.grades.isPassed ? 'FF008000' : 'FFFF0000' } };
-        }
-        if (mode === 'ATTENDANCE') {
-            const percentCell = row.getCell(9);
-             if (d.attendance.total.percentage < 50) {
-                 percentCell.font = { color: { argb: 'FFFF0000' }, bold: true };
-             }
-        }
-    });
-
-    sheet.columns.forEach((col, index) => {
-        if (index === 2) col.width = 35;
-        else col.width = 15;
-    });
+    }
 
     const buffer = await workbook.xlsx.writeBuffer();
     const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     const url = window.URL.createObjectURL(blob);
     const anchor = document.createElement('a');
     anchor.href = url;
-    anchor.download = `Rekap_${mode}_${selectedClass}_${monthName}.xlsx`;
+    anchor.download = `Rekap_${mode}_${selectedClass}.xlsx`;
     anchor.click();
     window.URL.revokeObjectURL(url);
 
-    // SWAL ALERT ADDED HERE
-    Swal.fire({
-        title: 'Export Berhasil!',
-        text: 'File Excel telah berhasil diunduh.',
-        icon: 'success',
-        timer: 2000,
-        showConfirmButton: false
-    });
+    Swal.fire('Export Berhasil', 'File Excel telah diunduh.', 'success');
   };
 
   return {
-      state: { selectedClass, selectedSubject, selectedMonth, monthNames: MONTH_NAMES, availableSubjects },
-      setters: { setSelectedClass, setSelectedSubject, setSelectedMonth },
-      computed: { availableClasses, filteredStudents, reportData },
+      state: { selectedClass, selectedSubject, selectedMonth, monthNames: MONTH_NAMES, availableSubjects, weights },
+      setters: { setSelectedClass, setSelectedSubject, setSelectedMonth, setWeights },
+      computed: { availableClasses, filteredStudents, reportData, ledgerData, isClassTeacher, daysInMonth },
       handlers: { handleExportExcel }
   };
 };

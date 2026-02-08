@@ -1,17 +1,46 @@
 
-import React, { useState } from 'react';
-import { IdentityData, TeacherRole, SchoolLevel } from '../types';
+import React, { useState, useMemo, useEffect } from 'react';
+import { IdentityData, TeacherRole, SchoolLevel, SUBJECTS_DATA } from '../types';
 
 declare const Swal: any;
+
+// Helper to Title Case
+const toTitleCase = (str: string) => {
+    return str.toLowerCase().replace(/\b\w/g, s => s.toUpperCase());
+};
 
 interface Props {
   data: IdentityData;
   onSave: (data: IdentityData) => void;
   onBack: () => void;
+  onResetSemester: () => void;
+  onResetYear: () => void;
 }
 
-export const IdentityForm: React.FC<Props> = ({ data, onSave, onBack }) => {
+export const IdentityForm: React.FC<Props> = ({ data, onSave, onBack, onResetSemester, onResetYear }) => {
   const [formData, setFormData] = useState<IdentityData>(data);
+  const [isOtherSubject, setIsOtherSubject] = useState(false);
+
+  // Determine available subjects based on level
+  const availableSubjects = useMemo(() => {
+      if (formData.level === 'SD') {
+          return SUBJECTS_DATA.SD.SUBJECT_TEACHER;
+      } else if (formData.level === 'SMP') {
+          return SUBJECTS_DATA.SMP;
+      } else {
+          return SUBJECTS_DATA.SMA_SMK;
+      }
+  }, [formData.level]);
+
+  // Init custom subject state logic
+  useEffect(() => {
+      if (formData.role === 'SUBJECT_TEACHER') {
+          const isStandard = availableSubjects.includes(formData.subjectName);
+          if (formData.subjectName && !isStandard) {
+              setIsOtherSubject(true);
+          }
+      }
+  }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -28,10 +57,26 @@ export const IdentityForm: React.FC<Props> = ({ data, onSave, onBack }) => {
       }));
   }
 
+  const handleSubjectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+      const val = e.target.value;
+      if (val === 'Lainnya') {
+          setIsOtherSubject(true);
+          setFormData(prev => ({ ...prev, subjectName: '' }));
+      } else {
+          setIsOtherSubject(false);
+          setFormData(prev => ({ ...prev, subjectName: val }));
+      }
+  };
+
+  const handleCustomSubjectChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      // Auto Title Case
+      const val = toTitleCase(e.target.value);
+      setFormData(prev => ({ ...prev, subjectName: val }));
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Activate the button functionality with feedback
     Swal.fire({
       title: 'Simpan Perubahan?',
       text: "Pastikan data profil dan peran guru sudah benar.",
@@ -51,6 +96,28 @@ export const IdentityForm: React.FC<Props> = ({ data, onSave, onBack }) => {
         );
       }
     });
+  };
+
+  const handleResetAction = (type: 'SEMESTER' | 'YEAR') => {
+      const title = type === 'SEMESTER' ? 'Reset Data Semester?' : 'Reset Tahun Ajaran Baru?';
+      const text = type === 'SEMESTER' 
+        ? "Ini akan menghapus Jurnal, Nilai, dan Presensi. Data Siswa dan Kelas TETAP ADA."
+        : "PERINGATAN KERAS: Ini akan menghapus SEMUA DATA (Siswa, Kelas, Nilai, dll) kecuali Profil Guru.";
+      
+      Swal.fire({
+          title: title,
+          text: text,
+          icon: 'warning',
+          showCancelButton: true,
+          confirmButtonColor: '#d33',
+          confirmButtonText: 'Ya, Hapus Data',
+          cancelButtonText: 'Batal'
+      }).then((result: any) => {
+          if (result.isConfirmed) {
+              if (type === 'SEMESTER') onResetSemester();
+              else onResetYear();
+          }
+      });
   };
 
   return (
@@ -110,6 +177,30 @@ export const IdentityForm: React.FC<Props> = ({ data, onSave, onBack }) => {
                 <p className="text-xs text-blue-700 leading-relaxed">
                     <strong>Guru Mapel:</strong> Mengajar satu mata pelajaran untuk banyak tingkatan kelas (SD/SMP/SMA).
                 </p>
+            </div>
+
+            {/* DANGER ZONE */}
+            <div className="bg-red-50 border border-red-100 rounded-xl p-6">
+                <h4 className="font-bold text-red-900 mb-4 flex items-center gap-2">
+                    <span className="material-symbols-outlined text-sm">warning</span>
+                    Reset Data Sistem
+                </h4>
+                <div className="space-y-3">
+                    <button 
+                        type="button" 
+                        onClick={() => handleResetAction('SEMESTER')}
+                        className="w-full py-2 bg-white border border-red-200 text-red-700 text-xs font-bold rounded-lg hover:bg-red-100 transition-colors"
+                    >
+                        Reset Semester (Hapus Nilai/Jurnal)
+                    </button>
+                    <button 
+                        type="button" 
+                        onClick={() => handleResetAction('YEAR')}
+                        className="w-full py-2 bg-red-600 text-white text-xs font-bold rounded-lg hover:bg-red-700 transition-colors"
+                    >
+                        Reset Tahun Ajaran (Hapus Semua)
+                    </button>
+                </div>
             </div>
         </div>
 
@@ -196,14 +287,50 @@ export const IdentityForm: React.FC<Props> = ({ data, onSave, onBack }) => {
                                     <span className="material-symbols-outlined text-slate-400">
                                         {formData.role === 'CLASS_TEACHER' ? 'meeting_room' : 'menu_book'}
                                     </span>
-                                    <input 
-                                        type="text" 
-                                        name={formData.role === 'CLASS_TEACHER' ? 'className' : 'subjectName'}
-                                        value={formData.role === 'CLASS_TEACHER' ? formData.className : formData.subjectName} 
-                                        onChange={handleChange}
-                                        placeholder={formData.role === 'CLASS_TEACHER' ? "Contoh: Kelas 5-A" : "Contoh: Matematika"}
-                                        className="flex-1 rounded-lg border-slate-200 focus:ring-2 focus:ring-primary focus:border-transparent text-sm font-bold text-slate-900"
-                                    />
+                                    
+                                    {formData.role === 'CLASS_TEACHER' ? (
+                                        <input 
+                                            type="text" 
+                                            name="className"
+                                            value={formData.className} 
+                                            onChange={handleChange}
+                                            placeholder="Contoh: Kelas 5-A"
+                                            className="flex-1 rounded-lg border-slate-200 focus:ring-2 focus:ring-primary focus:border-transparent text-sm font-bold text-slate-900"
+                                        />
+                                    ) : (
+                                        // SUBJECT SELECTOR WITH "LAINNYA"
+                                        <div className="flex-1 flex gap-2">
+                                            {!isOtherSubject ? (
+                                                <select 
+                                                    className="flex-1 rounded-lg border-slate-200 focus:ring-2 focus:ring-primary text-sm font-bold text-slate-900 cursor-pointer"
+                                                    value={formData.subjectName}
+                                                    onChange={handleSubjectChange}
+                                                >
+                                                    <option value="">-- Pilih Mata Pelajaran --</option>
+                                                    {availableSubjects.map(s => <option key={s} value={s}>{s}</option>)}
+                                                    {formData.level === 'SMK' || formData.level === 'SMA' ? <option value="Lainnya">Lainnya (Ketik Manual)</option> : null}
+                                                </select>
+                                            ) : (
+                                                <div className="flex-1 relative">
+                                                    <input 
+                                                        type="text" 
+                                                        value={formData.subjectName}
+                                                        onChange={handleCustomSubjectChange}
+                                                        placeholder="Ketik nama mata pelajaran..."
+                                                        className="w-full rounded-lg border-blue-300 focus:ring-2 focus:ring-primary text-sm font-bold text-slate-900 bg-blue-50 pl-4 pr-8"
+                                                        autoFocus
+                                                    />
+                                                    <button 
+                                                        type="button" 
+                                                        onClick={() => setIsOtherSubject(false)}
+                                                        className="absolute right-2 top-2.5 text-slate-400 hover:text-red-500"
+                                                    >
+                                                        <span className="material-symbols-outlined text-sm">close</span>
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -212,8 +339,8 @@ export const IdentityForm: React.FC<Props> = ({ data, onSave, onBack }) => {
                     {/* Section: Sekolah */}
                     <div className="space-y-4">
                         <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100 pb-2">Data Sekolah & Akademik</h4>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                             <div className="space-y-2 md:col-span-2">
+                        <div className="grid grid-cols-1 gap-6">
+                             <div className="space-y-2">
                                 <label className="text-sm font-semibold text-slate-700">Nama Sekolah</label>
                                 <input 
                                     type="text" 
@@ -224,41 +351,70 @@ export const IdentityForm: React.FC<Props> = ({ data, onSave, onBack }) => {
                                 />
                             </div>
                             
-                            {/* JENJANG SEKOLAH INPUT */}
-                            <div className="space-y-2">
-                                <label className="text-sm font-semibold text-slate-700">Jenjang Sekolah</label>
-                                <select 
-                                    name="level"
-                                    value={formData.level} 
-                                    onChange={handleChange}
-                                    disabled={formData.role === 'CLASS_TEACHER'}
-                                    className="w-full rounded-lg border-slate-200 focus:ring-2 focus:ring-primary focus:border-transparent text-sm font-bold text-slate-900 cursor-pointer disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
-                                >
-                                    <option value="SD">SD/MI Sederajat</option>
-                                    <option value="SMP">SMP/MTs Sederajat</option>
-                                    <option value="SMA">SMA/SMK/MA Sederajat</option>
-                                </select>
-                                {formData.role === 'CLASS_TEACHER' && (
-                                    <p className="text-[10px] text-orange-500 mt-1">*Guru Kelas otomatis diset jenjang SD</p>
-                                )}
+                            {/* ROW 1: JENJANG - TAHUN AJARAN */}
+                            <div className="grid grid-cols-2 gap-6">
+                                <div className="space-y-2">
+                                    <label className="text-sm font-semibold text-slate-700">Jenjang Sekolah</label>
+                                    <select 
+                                        name="level"
+                                        value={formData.level} 
+                                        onChange={handleChange}
+                                        disabled={formData.role === 'CLASS_TEACHER'}
+                                        className="w-full rounded-lg border-slate-200 focus:ring-2 focus:ring-primary focus:border-transparent text-sm font-bold text-slate-900 cursor-pointer disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
+                                    >
+                                        <option value="SD">SD/MI Sederajat</option>
+                                        <option value="SMP">SMP/MTs Sederajat</option>
+                                        <option value="SMA">SMA/MA Sederajat</option>
+                                        <option value="SMK">SMK Sederajat</option>
+                                    </select>
+                                    {formData.role === 'CLASS_TEACHER' && (
+                                        <p className="text-[10px] text-orange-500 mt-1">*Guru Kelas otomatis diset jenjang SD</p>
+                                    )}
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className="text-sm font-semibold text-slate-700">Tahun Ajaran</label>
+                                    <select 
+                                        name="academicYear"
+                                        value={formData.academicYear} 
+                                        onChange={handleChange}
+                                        className="w-full rounded-lg border-slate-200 focus:ring-2 focus:ring-primary focus:border-transparent text-sm font-bold text-slate-900 cursor-pointer"
+                                    >
+                                        <option value="2023/2024">2023/2024</option>
+                                        <option value="2024/2025">2024/2025</option>
+                                        <option value="2025/2026">2025/2026</option>
+                                    </select>
+                                </div>
                             </div>
 
-                            <div className="space-y-2">
-                                <label className="text-sm font-semibold text-slate-700">Tahun Ajaran</label>
-                                <select 
-                                    name="academicYear"
-                                    value={formData.academicYear} 
-                                    onChange={handleChange}
-                                    className="w-full rounded-lg border-slate-200 focus:ring-2 focus:ring-primary focus:border-transparent text-sm font-bold text-slate-900 cursor-pointer"
-                                >
-                                    <option value="2023/2024">2023/2024</option>
-                                    <option value="2024/2025">2024/2025</option>
-                                    <option value="2025/2026">2025/2026</option>
-                                </select>
+                            {/* ROW 2: KEPSEK - NIP */}
+                            <div className="grid grid-cols-2 gap-6">
+                                <div className="space-y-2">
+                                    <label className="text-sm font-semibold text-slate-700">Nama Kepala Sekolah</label>
+                                    <input 
+                                        type="text" 
+                                        name="principalName"
+                                        value={formData.principalName || ''} 
+                                        onChange={handleChange}
+                                        className="w-full rounded-lg border-slate-200 focus:ring-2 focus:ring-primary focus:border-transparent text-sm font-bold text-slate-900"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-semibold text-slate-700">NIP Kepala Sekolah</label>
+                                    <input 
+                                        type="text" 
+                                        name="principalNip"
+                                        value={formData.principalNip || ''} 
+                                        onChange={handleChange}
+                                        className="w-full rounded-lg border-slate-200 focus:ring-2 focus:ring-primary focus:border-transparent text-sm font-bold text-slate-900"
+                                    />
+                                </div>
                             </div>
+
+                            {/* ROW 3: SEMESTER */}
                             <div className="space-y-2">
                                 <label className="text-sm font-semibold text-slate-700">Semester</label>
-                                <div className="flex items-center gap-4">
+                                <div className="flex items-center gap-4 bg-slate-50 p-3 rounded-lg border border-slate-200">
                                     <label className="flex items-center gap-2 cursor-pointer">
                                         <input 
                                             type="radio" 
@@ -283,6 +439,7 @@ export const IdentityForm: React.FC<Props> = ({ data, onSave, onBack }) => {
                                     </label>
                                 </div>
                             </div>
+
                         </div>
                     </div>
                 </div>

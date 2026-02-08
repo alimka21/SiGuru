@@ -2,41 +2,9 @@
 import { useState, useMemo, useEffect } from 'react';
 import ExcelJS from 'exceljs';
 import { GoogleGenAI, Type } from "@google/genai";
-import { LearningMaterial, LearningObjective, Subject, AssessmentCriteria, IdentityData, AssessmentType } from '../types';
+import { LearningMaterial, LearningObjective, Subject, AssessmentCriteria, IdentityData, AssessmentType, SUBJECTS_DATA } from '../types';
 
 declare const Swal: any;
-
-const SD_SUBJECTS = [
-    { id: 'Pendidikan Pancasila', name: 'Pendidikan Pancasila' },
-    { id: 'Bahasa Indonesia', name: 'Bahasa Indonesia' },
-    { id: 'Matematika', name: 'Matematika' },
-    { id: 'IPAS', name: 'Ilmu Pengetahuan Alam dan Sosial (IPAS)' },
-    { id: 'Seni Budaya', name: 'Seni Budaya' },
-    { id: 'PJOK', name: 'PJOK' },
-    { id: 'Bahasa Inggris', name: 'Bahasa Inggris' },
-    { id: 'Muatan Lokal', name: 'Muatan Lokal' }
-];
-
-const SECONDARY_SUBJECTS = [
-    { id: 'Matematika', name: 'Matematika' },
-    { id: 'Bahasa Indonesia', name: 'Bahasa Indonesia' },
-    { id: 'Bahasa Inggris', name: 'Bahasa Inggris' },
-    { id: 'IPA', name: 'Ilmu Pengetahuan Alam (IPA)' },
-    { id: 'IPS', name: 'Ilmu Pengetahuan Sosial (IPS)' },
-    { id: 'PPKn', name: 'Pendidikan Pancasila' },
-    { id: 'PJOK', name: 'PJOK' },
-    { id: 'Seni Budaya', name: 'Seni Budaya' },
-    { id: 'Informatika', name: 'Informatika' },
-    { id: 'PAI', name: 'Pendidikan Agama Islam' },
-    { id: 'PAK', name: 'Pendidikan Agama Kristen' },
-    { id: 'Sejarah', name: 'Sejarah' },
-    { id: 'Geografi', name: 'Geografi' },
-    { id: 'Ekonomi', name: 'Ekonomi' },
-    { id: 'Sosiologi', name: 'Sosiologi' },
-    { id: 'Fisika', name: 'Fisika' },
-    { id: 'Kimia', name: 'Kimia' },
-    { id: 'Biologi', name: 'Biologi' }
-];
 
 interface UseCurriculumLogicProps {
   identity: IdentityData;
@@ -49,6 +17,7 @@ export const useCurriculumLogic = ({ identity, tps, onUpdateTPs }: UseCurriculum
   const [expandedTpId, setExpandedTpId] = useState<string | null>(null);
   const [generatingTpId, setGeneratingTpId] = useState<string | null>(null);
   const [isAddingTp, setIsAddingTp] = useState(false);
+  const [editingTpId, setEditingTpId] = useState<string | null>(null); // NEW: For Edit Mode
   
   // Forms
   const [newTpForm, setNewTpForm] = useState({ code: '', description: '', semester: '1', scope: '' });
@@ -89,8 +58,14 @@ export const useCurriculumLogic = ({ identity, tps, onUpdateTPs }: UseCurriculum
 
   // Subject Logic
   const subjectOptions = useMemo(() => {
-      return identity.level === 'SD' ? SD_SUBJECTS : SECONDARY_SUBJECTS;
-  }, [identity.level]);
+      if (identity.level === 'SD') {
+          return identity.role === 'CLASS_TEACHER' ? SUBJECTS_DATA.SD.CLASS_TEACHER : SUBJECTS_DATA.SD.SUBJECT_TEACHER;
+      } else if (identity.level === 'SMP') {
+          return SUBJECTS_DATA.SMP;
+      } else {
+          return SUBJECTS_DATA.SMA_SMK;
+      }
+  }, [identity.level, identity.role]);
 
   // Filter States
   const [activeScopeId, setActiveScopeId] = useState<string>(scopes[0].id);
@@ -100,7 +75,7 @@ export const useCurriculumLogic = ({ identity, tps, onUpdateTPs }: UseCurriculum
   
   // Check if active subject is in the predefined list (for "Lainnya" logic)
   const isManualSubject = useMemo(() => {
-      return !subjectOptions.some(s => s.id === activeSubjectId) && activeSubjectId !== '' && activeSubjectId !== 'Lainnya';
+      return !subjectOptions.some(s => s === activeSubjectId) && activeSubjectId !== '' && activeSubjectId !== 'Lainnya';
   }, [activeSubjectId, subjectOptions]);
 
   useEffect(() => {
@@ -109,7 +84,7 @@ export const useCurriculumLogic = ({ identity, tps, onUpdateTPs }: UseCurriculum
           if (identity.role === 'SUBJECT_TEACHER' && identity.subjectName) {
               setActiveSubjectId(identity.subjectName);
           } else {
-              setActiveSubjectId(subjectOptions[0].id);
+              setActiveSubjectId(subjectOptions[0]);
           }
       }
   }, [identity, subjectOptions, activeSubjectId]);
@@ -146,21 +121,91 @@ export const useCurriculumLogic = ({ identity, tps, onUpdateTPs }: UseCurriculum
   // --- HANDLERS (CRUD) ---
 
   const handleAddTP = () => {
-    if(!newTpForm.code || !newTpForm.description) return;
-    const newTp: LearningObjective = {
-        id: Date.now().toString(),
-        code: newTpForm.code.toUpperCase(), 
-        description: newTpForm.description,
-        semester: Number(newTpForm.semester) as 1 | 2,
-        scopeId: activeScopeId,
-        subjectId: activeSubjectId, 
-        scope: newTpForm.scope || 'Lingkup Materi Umum',
-        lms: [],
-        criteria: []
-    };
-    onUpdateTPs([...tps, newTp]);
+    if(!newTpForm.description) {
+        Swal.fire('Error', 'Deskripsi TP harus diisi.', 'error');
+        return;
+    }
+    
+    // GENERATE STANDARD CODE LOGIC (Format: SUB-PHASE-SEM-NUM)
+    // 1. Subject Code (3 Huruf Uppercase)
+    const subCode = (activeSubjectId || 'GEN').substring(0, 3).toUpperCase();
+    
+    // 2. Phase Code
+    const activeScopeObj = scopes.find(s => s.id === activeScopeId);
+    const phaseMatch = activeScopeObj?.name.match(/Fase\s+([A-F])/i);
+    const phaseCode = phaseMatch ? phaseMatch[1] : 'X';
+    
+    // 3. Semester
+    const semCode = newTpForm.semester;
+
+    // 4. Index (Count existing TPs in this Subject+Scope+Semester)
+    // If editing, keep original code unless user changed it manually
+    let finalCode = newTpForm.code;
+
+    if (!finalCode) {
+        const existingCount = tps.filter(t => 
+            t.subjectId === activeSubjectId && 
+            t.scopeId === activeScopeId && 
+            t.semester.toString() === semCode
+        ).length;
+        const nextIndex = existingCount + 1;
+        finalCode = `${subCode}-${phaseCode}-${semCode}-${nextIndex}`;
+    } else {
+        finalCode = finalCode.toUpperCase();
+    }
+
+    if (editingTpId) {
+        // UPDATE MODE
+        const updatedTPs = tps.map(tp => {
+            if (tp.id === editingTpId) {
+                return {
+                    ...tp,
+                    code: finalCode,
+                    description: newTpForm.description,
+                    semester: Number(newTpForm.semester) as 1 | 2,
+                    scope: newTpForm.scope || 'Lingkup Materi Umum'
+                };
+            }
+            return tp;
+        });
+        onUpdateTPs(updatedTPs);
+        setEditingTpId(null);
+    } else {
+        // ADD MODE
+        const newTp: LearningObjective = {
+            id: Date.now().toString(),
+            code: finalCode, 
+            description: newTpForm.description,
+            semester: Number(newTpForm.semester) as 1 | 2,
+            scopeId: activeScopeId,
+            subjectId: activeSubjectId, 
+            scope: newTpForm.scope || 'Lingkup Materi Umum',
+            lms: [],
+            criteria: []
+        };
+        onUpdateTPs([...tps, newTp]);
+    }
+    
     setIsAddingTp(false);
     setNewTpForm({ code: '', description: '', semester: '1', scope: '' });
+  };
+
+  const handleEditTP = (tp: LearningObjective) => {
+      setNewTpForm({
+          code: tp.code,
+          description: tp.description,
+          semester: tp.semester ? tp.semester.toString() : '1',
+          scope: tp.scope || ''
+      });
+      setEditingTpId(tp.id);
+      setIsAddingTp(true);
+      window.scrollTo({ top: 0, behavior: 'smooth' }); // Scroll to form
+  };
+
+  const handleCancelEdit = () => {
+      setIsAddingTp(false);
+      setEditingTpId(null);
+      setNewTpForm({ code: '', description: '', semester: '1', scope: '' });
   };
 
   const handleDeleteTP = (id: string) => {
@@ -326,7 +371,7 @@ export const useCurriculumLogic = ({ identity, tps, onUpdateTPs }: UseCurriculum
     const sheet = workbook.addWorksheet('Kurikulum');
     
     const headerRow = sheet.addRow([
-        'No', 'Semester', 'Mata Pelajaran', 'Lingkup Materi (Scope)', 'Kelas', 'Tujuan Pembelajaran (TP)', 'Kriteria Ketercapaian (KKTP)'
+        'No', 'Semester', 'Mata Pelajaran', 'Lingkup Materi (Scope)', 'Kelas', 'Kode TP', 'Tujuan Pembelajaran (TP)', 'Kriteria Ketercapaian (KKTP)'
     ]);
 
     headerRow.eachCell((cell) => {
@@ -344,7 +389,7 @@ export const useCurriculumLogic = ({ identity, tps, onUpdateTPs }: UseCurriculum
             tp.criteria.forEach(cr => {
                 const row = sheet.addRow([
                     rowIndex, `Semester ${tp.semester}`, activeSubjectId, tp.scope || 'Umum', activeScopeName,
-                    `${tp.code} - ${tp.description}`, `[${cr.type}] ${cr.description}`
+                    tp.code, tp.description, `[${cr.type}] ${cr.description}`
                 ]);
                 row.eachCell((cell) => {
                     cell.border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} };
@@ -354,7 +399,7 @@ export const useCurriculumLogic = ({ identity, tps, onUpdateTPs }: UseCurriculum
         } else {
              const row = sheet.addRow([
                     rowIndex, `Semester ${tp.semester}`, activeSubjectId, tp.scope || 'Umum', activeScopeName,
-                    `${tp.code} - ${tp.description}`, '-'
+                    tp.code, tp.description, '-'
             ]);
             row.eachCell((cell) => {
                 cell.border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} };
@@ -364,8 +409,8 @@ export const useCurriculumLogic = ({ identity, tps, onUpdateTPs }: UseCurriculum
         rowIndex++;
     });
 
-    sheet.getColumn(6).width = 50;
-    sheet.getColumn(7).width = 40;
+    sheet.getColumn(7).width = 50;
+    sheet.getColumn(8).width = 40;
     sheet.getColumn(3).width = 20;
     sheet.getColumn(4).width = 25;
 
@@ -400,7 +445,8 @@ export const useCurriculumLogic = ({ identity, tps, onUpdateTPs }: UseCurriculum
         isManualSubject,
         scopes,
         subjectOptions,
-        uniqueScopes // Export for autocomplete
+        uniqueScopes, // Export for autocomplete
+        editingTpId // Exported state
     },
     setters: {
         setExpandedTpId,
@@ -421,7 +467,9 @@ export const useCurriculumLogic = ({ identity, tps, onUpdateTPs }: UseCurriculum
         handleAddItem,
         handleDeleteSubItem,
         generateTpDetails,
-        handleExportCurriculum
+        handleExportCurriculum,
+        handleEditTP, // Exported handler
+        handleCancelEdit // Exported handler
     }
   };
 };

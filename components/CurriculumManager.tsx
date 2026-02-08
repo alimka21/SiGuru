@@ -24,7 +24,7 @@ export const CurriculumManager: React.FC<Props> = (props) => {
   const { 
       expandedTpId, generatingTpId, isAddingTp, newTpForm, 
       newItemForm, newItemType, activeScopeId, activeSubjectId, isManualSubject,
-      scopes, subjectOptions, uniqueScopes
+      scopes, subjectOptions, uniqueScopes, editingTpId
   } = state;
 
   return (
@@ -86,7 +86,7 @@ export const CurriculumManager: React.FC<Props> = (props) => {
                                 />
                                 <span className="material-symbols-outlined absolute left-3 top-2.5 text-blue-500 text-lg">edit</span>
                                 <button 
-                                    onClick={() => setters.setActiveSubjectId(subjectOptions[0].id)} 
+                                    onClick={() => setters.setActiveSubjectId(subjectOptions[0])} 
                                     className="absolute right-2 top-2 text-slate-400 hover:text-red-500"
                                     title="Kembali ke Daftar"
                                 >
@@ -107,9 +107,11 @@ export const CurriculumManager: React.FC<Props> = (props) => {
                                     className="w-full appearance-none pl-10 pr-8 py-2 border border-slate-300 rounded-lg text-sm font-bold text-slate-800 focus:ring-2 focus:ring-primary focus:border-transparent outline-none cursor-pointer bg-white"
                                 >
                                     {subjectOptions.map(subj => (
-                                        <option key={subj.id} value={subj.id}>{subj.name}</option>
+                                        <option key={subj} value={subj}>{subj}</option>
                                     ))}
-                                    <option value="Lainnya">+ Tambah Manual / Lainnya</option>
+                                    {props.identity.level === 'SMK' || props.identity.level === 'SMA' ? (
+                                        <option value="Lainnya">+ Tambah Manual / Lainnya</option>
+                                    ) : null}
                                 </select>
                                 <span className="material-symbols-outlined absolute left-3 top-2.5 text-slate-500 pointer-events-none text-lg">book</span>
                                 <span className="material-symbols-outlined absolute right-2 top-2.5 text-slate-400 pointer-events-none text-sm">expand_more</span>
@@ -129,11 +131,16 @@ export const CurriculumManager: React.FC<Props> = (props) => {
                     Export Excel
                 </button>
                 <button 
-                    onClick={() => setters.setIsAddingTp(!isAddingTp)}
-                    className="flex items-center gap-2 px-4 py-2.5 bg-primary text-white rounded-lg text-sm font-bold hover:bg-blue-600 transition-colors shadow-sm"
+                    onClick={() => {
+                        if (isAddingTp) handlers.handleCancelEdit();
+                        else setters.setIsAddingTp(true);
+                    }}
+                    className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-bold transition-colors shadow-sm
+                        ${isAddingTp ? 'bg-slate-200 text-slate-700 hover:bg-slate-300' : 'bg-primary text-white hover:bg-blue-600'}
+                    `}
                 >
-                    <span className="material-symbols-outlined text-sm">{isAddingTp ? 'remove' : 'add'}</span>
-                    Tambah TP
+                    <span className="material-symbols-outlined text-sm">{isAddingTp ? 'close' : 'add'}</span>
+                    {isAddingTp ? 'Batal' : 'Tambah TP'}
                 </button>
             </div>
         </div>
@@ -141,19 +148,19 @@ export const CurriculumManager: React.FC<Props> = (props) => {
         {/* Main Content Area */}
         <div className="flex-1 flex flex-col overflow-hidden bg-white">
             
-            {/* Add TP Form */}
+            {/* Add/Edit TP Form */}
             {isAddingTp && (
                 <div className="mx-6 mt-6 p-6 bg-blue-50 border border-blue-100 rounded-xl animate-in fade-in slide-in-from-top-4">
                     <h4 className="font-bold text-blue-800 mb-4 text-sm flex items-center gap-2">
-                        <span className="material-symbols-outlined text-base">add_circle</span>
-                        Tambah TP Baru di {activeSubjectId}
+                        <span className="material-symbols-outlined text-base">{editingTpId ? 'edit' : 'add_circle'}</span>
+                        {editingTpId ? 'Edit Tujuan Pembelajaran' : `Tambah TP Baru di ${activeSubjectId}`}
                     </h4>
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
                         {/* Kode */}
                         <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-blue-600 uppercase">Kode TP</label>
+                            <label className="text-[10px] font-bold text-blue-600 uppercase">Kode TP {editingTpId ? '' : '(Otomatis)'}</label>
                             <input 
-                                type="text" placeholder="Ex: TP.1.1" 
+                                type="text" placeholder={editingTpId ? "Ex: INF-E-1-1" : "Kosongkan untuk auto-generate"}
                                 value={newTpForm.code} onChange={e => setters.setNewTpForm({...newTpForm, code: e.target.value.toUpperCase()})}
                                 className="w-full p-2.5 text-sm border border-blue-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-300 bg-white text-slate-900 placeholder:text-slate-400"
                             />
@@ -181,6 +188,14 @@ export const CurriculumManager: React.FC<Props> = (props) => {
                                 <option value="2">Semester 2</option>
                             </select>
                         </div>
+                        
+                        {/* Helper Text for TP Code Format */}
+                        <div className="md:col-span-4">
+                            <p className="text-[10px] text-blue-500 italic bg-blue-100/50 px-2 py-1 rounded inline-block">
+                                * Format Kode TP Otomatis: <strong>Mata Pelajaran-Fase-Semester-TP Ke berapa</strong>. (Contoh: MTK-E-1-2)
+                            </p>
+                        </div>
+
                         {/* Deskripsi - Full Width */}
                         <div className="md:col-span-3 space-y-1">
                             <label className="text-[10px] font-bold text-blue-600 uppercase">Deskripsi Tujuan Pembelajaran</label>
@@ -192,7 +207,9 @@ export const CurriculumManager: React.FC<Props> = (props) => {
                         </div>
                         {/* Button */}
                         <div className="md:col-span-1">
-                            <button onClick={handlers.handleAddTP} className="w-full py-2.5 bg-blue-600 text-white rounded-lg font-bold text-sm hover:bg-blue-700 shadow-md">Simpan TP</button>
+                            <button onClick={handlers.handleAddTP} className="w-full py-2.5 bg-blue-600 text-white rounded-lg font-bold text-sm hover:bg-blue-700 shadow-md">
+                                {editingTpId ? 'Simpan Perubahan' : 'Simpan TP'}
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -229,7 +246,7 @@ export const CurriculumManager: React.FC<Props> = (props) => {
                                             onClick={() => setters.setExpandedTpId(isExpanded ? null : tp.id)}
                                             className="p-4 flex items-center gap-4 cursor-pointer"
                                         >
-                                            <div className={`size-10 rounded-lg flex items-center justify-center font-bold text-sm ${isExpanded ? 'bg-primary text-white' : 'bg-slate-100 text-slate-500'}`}>
+                                            <div className={`min-w-[80px] h-10 px-2 rounded-lg flex items-center justify-center font-bold text-xs ${isExpanded ? 'bg-primary text-white' : 'bg-slate-100 text-slate-500'}`}>
                                                 {tp.code.toUpperCase()}
                                             </div>
                                             <div className="flex-1">
@@ -242,12 +259,24 @@ export const CurriculumManager: React.FC<Props> = (props) => {
                                                 </div>
                                             </div>
                                             
-                                            <button 
-                                                onClick={(e) => { e.stopPropagation(); handlers.handleDeleteTP(tp.id); }}
-                                                className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                                            >
-                                                <span className="material-symbols-outlined">delete</span>
-                                            </button>
+                                            <div className="flex items-center gap-2">
+                                                {/* Edit Button */}
+                                                <button 
+                                                    onClick={(e) => { e.stopPropagation(); handlers.handleEditTP(tp); }}
+                                                    className="p-2 text-slate-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
+                                                    title="Edit TP"
+                                                >
+                                                    <span className="material-symbols-outlined text-sm">edit</span>
+                                                </button>
+                                                {/* Delete Button */}
+                                                <button 
+                                                    onClick={(e) => { e.stopPropagation(); handlers.handleDeleteTP(tp.id); }}
+                                                    className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                                                    title="Hapus TP"
+                                                >
+                                                    <span className="material-symbols-outlined">delete</span>
+                                                </button>
+                                            </div>
                                             <span className={`material-symbols-outlined text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}>expand_more</span>
                                         </div>
 
@@ -295,7 +324,6 @@ export const CurriculumManager: React.FC<Props> = (props) => {
                                                                 <tr>
                                                                     <th className="px-4 py-2 text-left w-24">Kode</th>
                                                                     <th className="px-4 py-2 text-left">Deskripsi Kriteria</th>
-                                                                    <th className="px-4 py-2 w-32 text-center">Jenis</th>
                                                                     <th className="px-4 py-2 w-16"></th>
                                                                 </tr>
                                                             </thead>
@@ -304,11 +332,6 @@ export const CurriculumManager: React.FC<Props> = (props) => {
                                                                     <tr key={cr.id} className="group hover:bg-slate-50">
                                                                         <td className="px-4 py-2 font-mono text-xs font-bold text-green-600">{cr.code.toUpperCase()}</td>
                                                                         <td className="px-4 py-2 text-slate-800">{cr.description}</td>
-                                                                        <td className="px-4 py-2 text-center">
-                                                                            <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase ${cr.type === 'SUMMATIVE' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
-                                                                                {cr.type === 'SUMMATIVE' ? 'Sumatif' : 'Formatif'}
-                                                                            </span>
-                                                                        </td>
                                                                         <td className="px-4 py-2 text-right">
                                                                             <button 
                                                                                 onClick={() => handlers.handleDeleteSubItem(tp.id, cr.id, 'CRITERIA')}
@@ -320,7 +343,7 @@ export const CurriculumManager: React.FC<Props> = (props) => {
                                                                     </tr>
                                                                 )) : (
                                                                     <tr>
-                                                                        <td colSpan={4} className="px-4 py-8 text-center text-slate-400 italic text-xs">Belum ada kriteria penilaian. Gunakan Generate AI di atas atau tambah manual.</td>
+                                                                        <td colSpan={3} className="px-4 py-8 text-center text-slate-400 italic text-xs">Belum ada kriteria penilaian. Gunakan Generate AI di atas atau tambah manual.</td>
                                                                     </tr>
                                                                 )}
                                                                     {/* Add Row */}
@@ -342,17 +365,6 @@ export const CurriculumManager: React.FC<Props> = (props) => {
                                                                             onChange={(e) => setters.setNewItemForm({ type: 'CRITERIA', parentId: tp.id, val1: newItemForm.val1, val2: e.target.value })}
                                                                             onKeyDown={(e) => e.key === 'Enter' && handlers.handleAddItem()}
                                                                         />
-                                                                    </td>
-                                                                    <td className="px-2 py-2">
-                                                                        <select 
-                                                                            value={newItemType}
-                                                                            onChange={(e) => setters.setNewItemType(e.target.value as AssessmentType)}
-                                                                            className="w-full text-xs border-slate-200 rounded p-1.5 focus:ring-1 focus:ring-green-500 bg-white text-slate-900"
-                                                                            onFocus={() => setters.setNewItemForm(prev => ({ ...prev, type: 'CRITERIA', parentId: tp.id }))}
-                                                                        >
-                                                                            <option value="FORMATIVE">Formatif</option>
-                                                                            <option value="SUMMATIVE">Sumatif</option>
-                                                                        </select>
                                                                     </td>
                                                                     <td className="px-2 py-2 text-center">
                                                                             {newItemForm.type === 'CRITERIA' && newItemForm.parentId === tp.id && newItemForm.val1 && (

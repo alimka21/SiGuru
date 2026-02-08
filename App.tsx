@@ -49,7 +49,9 @@ const INITIAL_IDENTITY: IdentityData = {
     semester: 'Genap',
     academicYear: '2025/2026',
     className: '',
-    studentCount: 0
+    studentCount: 0,
+    principalName: '',
+    principalNip: ''
 };
 
 // Loader for Suspense
@@ -162,8 +164,6 @@ const AppContent = () => {
          navigate('/admin');
       } else {
          // Only navigate if we are on login page to avoid overriding deep links
-         // With HashRouter, window.location.pathname will be the base path, hash will be separate.
-         // We check if hash is empty or just #/login
          const hash = window.location.hash;
          if (!hash || hash === '#/login' || hash === '#/') {
              navigate('/dashboard');
@@ -205,7 +205,6 @@ const AppContent = () => {
 
   const loadUserData = (user: User) => {
         const storageKey = `siguru_data_${user.email}`;
-        // Changed to localStorage to persist across sessions
         const savedDataStr = localStorage.getItem(storageKey);
         let dataLoaded = false;
 
@@ -222,7 +221,7 @@ const AppContent = () => {
                 setAttendanceData(data.attendanceData || {});
                 setGradeData(data.gradeData || {});
                 setJournals(data.journals || []);
-                setCalendarEvents(data.calendarEvents || []); // Load events
+                setCalendarEvents(data.calendarEvents || []); 
                 dataLoaded = true;
             } 
           } catch (e) { console.error("Failed to parse saved data", e); }
@@ -245,9 +244,7 @@ const AppContent = () => {
   const saveDataToStorage = useCallback(() => {
     if (!currentUser) return;
     const storageKey = `siguru_data_${currentUser.email}`;
-    // Include calendarEvents
     const payload: UserStorageData = { identity, students, classes, schedules, tps, subject, attendanceData, gradeData, journals, calendarEvents };
-    // Changed to localStorage to persist data
     localStorage.setItem(storageKey, JSON.stringify(payload));
   }, [currentUser, identity, students, classes, schedules, tps, subject, attendanceData, gradeData, journals, calendarEvents]);
 
@@ -259,6 +256,34 @@ const AppContent = () => {
   }, [saveDataToStorage, currentUser]);
 
   // --- ACTIONS ---
+  
+  // RESET ACTIONS
+  const handleResetSemester = () => {
+      // Keep: identity, students, classes, calendar
+      // Clear: schedules, attendance, gradeData, journals, tps (usually TPs are semester based, but if reused, could be kept. Prompt implies clearing academic data).
+      // Based on prompt: "semua data terhapus kecuali data siswa, kelas, dan kelender pendidikan"
+      setSchedules([]);
+      setAttendanceData({});
+      setGradeData({});
+      setJournals([]);
+      setTps([]); 
+      Swal.fire('Reset Berhasil', 'Data semester telah direset (Jadwal, Nilai, Presensi, Jurnal, TP).', 'success');
+  };
+
+  const handleResetAcademicYear = () => {
+      // Keep: Identity (Name, Mapel, School)
+      // Reset: Everything else
+      setStudents([]);
+      setClasses([]);
+      setSchedules([]);
+      setTps([]);
+      setAttendanceData({});
+      setGradeData({});
+      setJournals([]);
+      setCalendarEvents([]);
+      Swal.fire('Reset Total Berhasil', 'Tahun ajaran baru siap dimulai. Data siswa dan akademik telah dihapus.', 'success');
+  };
+
   const handleLogin = async (data: LoginData) => {
     setIsLoadingAuth(true);
     if (!isSupabaseConfigured) {
@@ -325,7 +350,6 @@ const AppContent = () => {
 
   // Context Navigation Wrapper
   const handleContextNavigate = (tab: TabView, context: { className?: string, scheduleId?: string, targetDate?: string } = {}) => {
-      // Logic to map legacy TabView to Routes (mostly for Dashboard widgets)
       if (tab === TabView.ATTENDANCE) {
           navigate('/akademik/attendance', { state: context });
       } else if (tab === TabView.JOURNAL) {
@@ -333,14 +357,12 @@ const AppContent = () => {
       } else if (tab === TabView.GRADING) {
           navigate('/akademik/grading', { state: context });
       } else if (tab === TabView.CALENDAR) {
-          navigate('/akademik/calendar', { state: context }); // Add handler for Calendar
+          navigate('/akademik/calendar', { state: context }); 
       } else {
-          // Default fallbacks handled by Sidebar links mostly
           console.log("Navigating to:", tab, context);
       }
   };
 
-  // Helper for admin actions (simplified for brevity as they are passed to AdminPanel)
   const adminActions = {
       onAddUser: async (d: RegisterData) => { /* logic */ }, 
       onDeleteUser: async (id: string) => { /* logic */ },
@@ -354,7 +376,6 @@ const AppContent = () => {
       }
   };
 
-  // Loading Screen
   if (isLoadingAuth) {
       return (
           <div className="flex h-screen w-full items-center justify-center bg-background-light">
@@ -409,7 +430,13 @@ const AppContent = () => {
             } />
             
             <Route path="identity" element={
-                <IdentityForm data={identity} onSave={handleIdentitySave} onBack={() => navigate('/dashboard')} />
+                <IdentityForm 
+                    data={identity} 
+                    onSave={handleIdentitySave} 
+                    onBack={() => navigate('/dashboard')} 
+                    onResetSemester={handleResetSemester}
+                    onResetYear={handleResetAcademicYear}
+                />
             } />
 
             {/* MASTER DATA */}
@@ -421,7 +448,7 @@ const AppContent = () => {
                     <StudentManager identity={identity} students={students} classes={classes} onUpdateStudents={setStudents} onUpdateClasses={setClasses} onBack={() => navigate('/dashboard')} />
                 } />
                 <Route path="schedules" element={
-                    <ScheduleManager schedules={schedules} classes={classes} onUpdateSchedules={setSchedules} onBack={() => navigate('/dashboard')} />
+                    <ScheduleManager schedules={schedules} classes={classes} onUpdateSchedules={setSchedules} onBack={() => navigate('/dashboard')} identity={identity} /> 
                 } />
             </Route>
 

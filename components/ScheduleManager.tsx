@@ -1,6 +1,6 @@
 
-import React, { useState } from 'react';
-import { ScheduleItem, ClassInfo } from '../types';
+import React, { useState, useEffect, useMemo } from 'react';
+import { ScheduleItem, ClassInfo, IdentityData, SUBJECTS_DATA } from '../types';
 
 declare const Swal: any;
 
@@ -9,6 +9,7 @@ interface Props {
   classes: ClassInfo[]; // Recieve classes for dropdown
   onUpdateSchedules: (schedules: ScheduleItem[]) => void;
   onBack: () => void;
+  identity: IdentityData; // Receive identity to check role
 }
 
 const DAYS = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
@@ -18,7 +19,7 @@ const toTitleCase = (str: string) => {
     return str.toLowerCase().replace(/\b\w/g, s => s.toUpperCase());
 };
 
-export const ScheduleManager: React.FC<Props> = ({ schedules, classes, onUpdateSchedules, onBack }) => {
+export const ScheduleManager: React.FC<Props> = ({ schedules, classes, onUpdateSchedules, onBack, identity }) => {
   const [activeDay, setActiveDay] = useState<string>('Senin');
   const [searchQuery, setSearchQuery] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -32,6 +33,22 @@ export const ScheduleManager: React.FC<Props> = ({ schedules, classes, onUpdateS
     subject: '',
     room: ''
   });
+
+  // Check if subject should be auto-filled and locked (POINT 4)
+  const isSubjectTeacher = identity.role === 'SUBJECT_TEACHER' && identity.subjectName;
+
+  // Determine Subject Options based on Selected Class Level or Teacher Identity
+  const subjectOptions = useMemo(() => {
+      // If we have a selected class, try to guess level from class data (not fully available here, assume Identity Level)
+      // Since schedule is usually made for the teacher's school level:
+      if (identity.level === 'SD') {
+          return identity.role === 'CLASS_TEACHER' ? SUBJECTS_DATA.SD.CLASS_TEACHER : SUBJECTS_DATA.SD.SUBJECT_TEACHER;
+      } else if (identity.level === 'SMP') {
+          return SUBJECTS_DATA.SMP;
+      } else {
+          return SUBJECTS_DATA.SMA_SMK;
+      }
+  }, [identity.level, identity.role]);
 
   const filteredSchedules = schedules
     .filter(s => {
@@ -76,7 +93,8 @@ export const ScheduleManager: React.FC<Props> = ({ schedules, classes, onUpdateS
             startTime: '07:30',
             endTime: '09:00',
             className: defaultClass,
-            subject: '',
+            // POINT 4: Auto-fill subject if Subject Teacher
+            subject: isSubjectTeacher ? identity.subjectName : '', 
             room: ''
         });
     }
@@ -102,7 +120,7 @@ export const ScheduleManager: React.FC<Props> = ({ schedules, classes, onUpdateS
     const formattedData = {
         ...formData,
         className: formData.className, // Already selected from dropdown (exact value)
-        subject: toTitleCase(formData.subject),
+        subject: formData.subject, // Now selected from dropdown (mostly)
         room: toTitleCase(formData.room)
     };
 
@@ -343,17 +361,29 @@ export const ScheduleManager: React.FC<Props> = ({ schedules, classes, onUpdateS
                           </select>
                       </div>
 
-                      <div className="space-y-2">
-                          <label className="text-sm font-bold text-slate-700">Mata Pelajaran <span className="text-red-500">*</span></label>
-                          <input 
-                              type="text" 
-                              required
-                              placeholder="Nama Mapel"
-                              className="w-full rounded-lg border-slate-200 focus:ring-2 focus:ring-primary focus:border-transparent text-sm font-bold text-slate-900 bg-white"
-                              value={formData.subject}
-                              onChange={(e) => setFormData({...formData, subject: e.target.value})}
-                          />
-                      </div>
+                      {/* Mapel Field - Conditional based on Role */}
+                      {isSubjectTeacher ? (
+                          <div className="bg-blue-50 p-3 rounded-lg border border-blue-100">
+                              <label className="text-xs font-bold text-blue-500 uppercase">Mata Pelajaran (Otomatis)</label>
+                              <p className="text-sm font-bold text-blue-900">{formData.subject}</p>
+                          </div>
+                      ) : (
+                          <div className="space-y-2">
+                              <label className="text-sm font-bold text-slate-700">Mata Pelajaran <span className="text-red-500">*</span></label>
+                              <select 
+                                  required
+                                  className="w-full rounded-lg border-slate-200 focus:ring-2 focus:ring-primary focus:border-transparent text-sm font-bold text-slate-900 bg-white cursor-pointer"
+                                  value={formData.subject}
+                                  onChange={(e) => setFormData({...formData, subject: e.target.value})}
+                              >
+                                  <option value="">-- Pilih Mapel --</option>
+                                  {subjectOptions.map(subj => (
+                                      <option key={subj} value={subj}>{subj}</option>
+                                  ))}
+                              </select>
+                          </div>
+                      )}
+
                        <div className="space-y-2">
                           <label className="text-sm font-bold text-slate-700">Ruangan <span className="text-red-500">*</span></label>
                           <input 

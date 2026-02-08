@@ -22,7 +22,7 @@ export const StudentManager: React.FC<Props> = (props) => {
     refs 
   } = useStudentLogic(props);
 
-  const { isModalOpen, editingId, filterClass, searchQuery, formData } = state;
+  const { isModalOpen, editingId, filterClass, searchQuery, formData, selectedIds } = state;
   const { filteredStudents } = computed;
 
   return (
@@ -92,7 +92,7 @@ export const StudentManager: React.FC<Props> = (props) => {
       <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
         {/* Table Toolbar */}
         <div className="p-4 border-b border-slate-200 flex flex-wrap gap-4 justify-between items-center bg-slate-50">
-           <div className="flex gap-4 flex-1">
+           <div className="flex gap-4 flex-1 items-center">
                 <div className="relative">
                     <span className="material-symbols-outlined absolute left-3 top-2.5 text-slate-400 text-lg">search</span>
                     <input 
@@ -104,7 +104,6 @@ export const StudentManager: React.FC<Props> = (props) => {
                     />
                 </div>
                 
-                {/* Select with Icon Dropdown */}
                 <div className="relative">
                     <select 
                         value={filterClass}
@@ -119,36 +118,66 @@ export const StudentManager: React.FC<Props> = (props) => {
                     <span className="material-symbols-outlined absolute right-3 top-2.5 text-slate-400 pointer-events-none text-sm">expand_more</span>
                 </div>
            </div>
+
+           {/* BULK ACTIONS */}
+           <div className="flex gap-2">
+               {selectedIds.size > 0 && (
+                   <button 
+                        onClick={handlers.handleDeleteSelected}
+                        className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 border border-red-200 rounded-lg text-xs font-bold hover:bg-red-100 transition-colors"
+                   >
+                       <span className="material-symbols-outlined text-sm">delete</span>
+                       Hapus Terpilih ({selectedIds.size})
+                   </button>
+               )}
+               <button 
+                    onClick={handlers.handleDeleteAll}
+                    className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 text-slate-600 rounded-lg text-xs font-bold hover:bg-slate-100 transition-colors"
+               >
+                   <span className="material-symbols-outlined text-sm">delete_sweep</span>
+                   Hapus Semua
+               </button>
+           </div>
         </div>
 
         <div className="overflow-x-auto min-h-[300px]">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200">
+                <th className="px-4 py-4 w-12 text-center">
+                    <input 
+                        type="checkbox" 
+                        className="rounded border-slate-300 text-primary focus:ring-primary cursor-pointer"
+                        onChange={(e) => handlers.toggleAll(e.target.checked)}
+                        checked={filteredStudents.length > 0 && selectedIds.size === filteredStudents.length}
+                    />
+                </th>
                 <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider w-16 text-center">No</th>
                 <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Identitas Siswa</th>
                 <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Kelas</th>
-                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Status</th>
                 <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredStudents.length > 0 ? filteredStudents.map((student, index) => (
-                <tr key={student.id} className="hover:bg-slate-50 transition-colors group">
+                <tr key={student.id} className={`hover:bg-slate-50 transition-colors group ${selectedIds.has(student.id) ? 'bg-blue-50/50' : ''}`}>
+                  <td className="px-4 py-4 text-center">
+                      <input 
+                        type="checkbox" 
+                        className="rounded border-slate-300 text-primary focus:ring-primary cursor-pointer"
+                        checked={selectedIds.has(student.id)}
+                        onChange={() => handlers.toggleSelection(student.id)}
+                      />
+                  </td>
                   <td className="px-6 py-4 text-center text-sm text-slate-500">{index + 1}</td>
                   <td className="px-6 py-4">
                     <p className="font-bold text-slate-800 text-sm">{student.name}</p>
                     <div className="flex gap-2 text-[10px] text-slate-500 mt-1">
-                        <span className="bg-slate-100 px-1.5 py-0.5 rounded">NIS: {student.nis}</span>
+                        <span className="bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">NIS: {student.nis}</span>
+                        {student.nisn && <span className="bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded border border-blue-100">NISN: {student.nisn}</span>}
                     </div>
                   </td>
                   <td className="px-6 py-4 text-sm text-slate-600 font-medium">{student.className || '-'}</td>
-                  <td className="px-6 py-4">
-                     <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2 py-1 rounded-full border bg-green-50 text-green-600 border-green-100`}>
-                      <span className="size-1.5 rounded-full bg-green-500"></span> 
-                      Aktif
-                    </span>
-                  </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex justify-end gap-2">
                       <button onClick={() => handlers.handleOpenModal(student)} className="p-2 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors" title="Edit">
@@ -212,16 +241,28 @@ export const StudentManager: React.FC<Props> = (props) => {
                               onChange={(e) => setters.setFormData({...formData, name: e.target.value})}
                           />
                       </div>
-                      <div className="space-y-2">
-                            <label className="text-sm font-bold text-slate-700">NIS <span className="text-red-500">*</span></label>
-                            <input 
-                                type="text" 
-                                required
-                                placeholder="Nomor Induk"
-                                className="w-full rounded-lg border-slate-200 focus:ring-2 focus:ring-primary focus:border-transparent text-sm font-bold text-slate-900 bg-white"
-                                value={formData.nis}
-                                onChange={(e) => setters.setFormData({...formData, nis: e.target.value})}
-                            />
+                      <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                                <label className="text-sm font-bold text-slate-700">NIS <span className="text-red-500">*</span></label>
+                                <input 
+                                    type="text" 
+                                    required
+                                    placeholder="Nomor Induk"
+                                    className="w-full rounded-lg border-slate-200 focus:ring-2 focus:ring-primary focus:border-transparent text-sm font-bold text-slate-900 bg-white"
+                                    value={formData.nis}
+                                    onChange={(e) => setters.setFormData({...formData, nis: e.target.value})}
+                                />
+                          </div>
+                          <div className="space-y-2">
+                                <label className="text-sm font-bold text-slate-700">NISN</label>
+                                <input 
+                                    type="text" 
+                                    placeholder="NISN Nasional"
+                                    className="w-full rounded-lg border-slate-200 focus:ring-2 focus:ring-primary focus:border-transparent text-sm font-bold text-slate-900 bg-white"
+                                    value={formData.nisn}
+                                    onChange={(e) => setters.setFormData({...formData, nisn: e.target.value})}
+                                />
+                          </div>
                       </div>
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">

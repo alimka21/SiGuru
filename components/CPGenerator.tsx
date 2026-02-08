@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { LearningObjective, AssessmentCriteria, IdentityData } from '../types';
+import { LearningObjective, AssessmentCriteria, IdentityData, SUBJECTS_DATA } from '../types';
 import { GoogleGenAI, Type } from "@google/genai";
 
 declare const Swal: any;
@@ -29,28 +29,6 @@ const LEVEL_TO_PHASE_MAP: { [key: string]: string } = {
     'SMK': 'Fase E'
 };
 
-// Mock Subjects
-const SUBJECT_OPTIONS = [
-    { id: 'Matematika', name: 'Matematika' },
-    { id: 'Bahasa Indonesia', name: 'Bahasa Indonesia' },
-    { id: 'Bahasa Inggris', name: 'Bahasa Inggris' },
-    { id: 'IPA', name: 'Ilmu Pengetahuan Alam (IPA)' },
-    { id: 'IPS', name: 'Ilmu Pengetahuan Sosial (IPS)' },
-    { id: 'PPKn', name: 'Pendidikan Pancasila' },
-    { id: 'PJOK', name: 'PJOK' },
-    { id: 'Seni Budaya', name: 'Seni Budaya' },
-    { id: 'Informatika', name: 'Informatika' },
-    { id: 'PAI', name: 'Pendidikan Agama Islam' },
-    { id: 'PAK', name: 'Pendidikan Agama Kristen' },
-    { id: 'Sejarah', name: 'Sejarah' },
-    { id: 'Geografi', name: 'Geografi' },
-    { id: 'Ekonomi', name: 'Ekonomi' },
-    { id: 'Sosiologi', name: 'Sosiologi' },
-    { id: 'Fisika', name: 'Fisika' },
-    { id: 'Kimia', name: 'Kimia' },
-    { id: 'Biologi', name: 'Biologi' }
-];
-
 interface AllocationItem {
     id: string;
     code: string;
@@ -74,6 +52,14 @@ export const CPGenerator: React.FC<Props> = ({ onSave, onBack, identity }) => {
   // Drag State
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
 
+  // Derive Subject Options based on identity if available, else default to SMA
+  const subjectOptions = useMemo(() => {
+      if (!identity) return SUBJECTS_DATA.SMA_SMK;
+      if (identity.level === 'SD') return identity.role === 'CLASS_TEACHER' ? SUBJECTS_DATA.SD.CLASS_TEACHER : SUBJECTS_DATA.SD.SUBJECT_TEACHER;
+      if (identity.level === 'SMP') return SUBJECTS_DATA.SMP;
+      return SUBJECTS_DATA.SMA_SMK;
+  }, [identity]);
+
   // --- AUTO FILL EFFECT ---
   useEffect(() => {
       if (identity) {
@@ -83,14 +69,12 @@ export const CPGenerator: React.FC<Props> = ({ onSave, onBack, identity }) => {
           }
           // Auto Subject (if subject teacher)
           if (identity.role === 'SUBJECT_TEACHER' && identity.subjectName) {
-              // Try to find exact match in options, or just set it
-              const match = SUBJECT_OPTIONS.find(s => s.name.toLowerCase() === identity.subjectName.toLowerCase());
-              if (match) setSelectedSubject(match.id);
-              // Note: If mapel is custom (not in list), simple select won't show it unless we add it dynamically.
-              // For now, defaulting to Matematika if not found in standard list is safer, or user picks.
+              if (subjectOptions.includes(identity.subjectName)) {
+                  setSelectedSubject(identity.subjectName);
+              }
           }
       }
-  }, [identity]);
+  }, [identity, subjectOptions]);
 
   // --- COMPUTED ---
   const targetClasses = useMemo(() => PHASE_MAP[phase] || [], [phase]);
@@ -249,11 +233,27 @@ export const CPGenerator: React.FC<Props> = ({ onSave, onBack, identity }) => {
           return;
       }
 
+      // Grouping to generate standard codes
+      // Format: SubjectCode-PhaseCode-Sem-Index
+      const subjectCode = selectedSubject.substring(0, 3).toUpperCase();
+      const phaseCode = phase.split(' ')[1] || 'X'; // "Fase E" -> "E"
+      
+      // Track index per group (Scope + Semester) to maintain sequence
+      const sequenceTracker: Record<string, number> = {};
+
       // Final transformation
       const finalTPs: LearningObjective[] = distributedItems.map(item => {
           // Parse container string "ClassName-Semester" -> e.g. "Kelas 10-1"
           const [className, semesterStr] = item.container.split('::');
           
+          // Generate Key for sequence: ClassName-Semester
+          const key = `${className}-${semesterStr}`;
+          if (!sequenceTracker[key]) sequenceTracker[key] = 0;
+          sequenceTracker[key]++;
+          
+          // GENERATE STANDARD CODE
+          const code = `${subjectCode}-${phaseCode}-${semesterStr}-${sequenceTracker[key]}`;
+
           const criteriaObjects: AssessmentCriteria[] = item.criteria.map((c, idx) => ({
               id: `auto-crit-${item.id}-${idx}`,
               code: `KKTP.${idx + 1}`,
@@ -263,7 +263,7 @@ export const CPGenerator: React.FC<Props> = ({ onSave, onBack, identity }) => {
 
           return {
               id: item.id,
-              code: item.code,
+              code: code,
               description: item.description,
               semester: parseInt(semesterStr) as 1 | 2,
               scopeId: className, // Stores Class Name as ScopeID for curriculum mapping
@@ -311,8 +311,8 @@ export const CPGenerator: React.FC<Props> = ({ onSave, onBack, identity }) => {
                                     onChange={e => setSelectedSubject(e.target.value)} 
                                     className="w-full border-slate-300 rounded-lg text-sm font-bold text-slate-800 focus:ring-primary py-2"
                                 >
-                                    {SUBJECT_OPTIONS.map(subj => (
-                                        <option key={subj.id} value={subj.id}>{subj.name}</option>
+                                    {subjectOptions.map(subj => (
+                                        <option key={subj} value={subj}>{subj}</option>
                                     ))}
                                 </select>
                             </div>
@@ -330,7 +330,7 @@ export const CPGenerator: React.FC<Props> = ({ onSave, onBack, identity }) => {
                     </div>
 
                     {/* ACTION BUTTONS */}
-                    <div className="flex flex-col gap-2 w-48 shrink-0">
+                    <div className="flex flex-col gap-3 w-48 shrink-0">
                         <button 
                             onClick={handleGenerate}
                             disabled={isGenerating}
@@ -350,7 +350,16 @@ export const CPGenerator: React.FC<Props> = ({ onSave, onBack, identity }) => {
                                 </>
                             )}
                         </button>
-                        {/* Tombol 'Kembali ke Menu' dihapus sesuai permintaan */}
+                        
+                        <a 
+                            href="https://uploads.belajar.id/document/files/Kepka_BSKAP_No_01k17e8396ajn15j3hcw0k773b.pdf" 
+                            target="_blank" 
+                            rel="noreferrer"
+                            className="text-[10px] font-bold text-blue-600 hover:text-blue-800 flex items-center justify-center gap-1 bg-blue-50 px-2 py-2 rounded border border-blue-200 transition-colors hover:bg-blue-100"
+                        >
+                            <span className="material-symbols-outlined text-sm">open_in_new</span>
+                            Lihat CP Terbaru
+                        </a>
                     </div>
                 </div>
             </div>
