@@ -277,6 +277,29 @@ const AppContent = () => {
     });
   };
 
+  const handleSaveIdentity = async (updatedData: IdentityData) => {
+      setIdentity(updatedData); // Optimistic Update
+      if (!currentUser?.id) return;
+
+      try {
+          const { error } = await supabase.from('teachers').update({
+              full_name: updatedData.teacherName,
+              nip: updatedData.nip,
+              role: updatedData.role,
+              level: updatedData.level,
+              active_semester: updatedData.semester,
+              active_academic_year: updatedData.academicYear
+          }).eq('id', currentUser.id);
+
+          if (error) {
+              console.error("Supabase update error:", error);
+              // Silent fail for UX or show simple toast if needed, but optimistic UI is key here
+          }
+      } catch (err) {
+          console.error("Failed to save identity", err);
+      }
+  };
+
   // Context Navigation Wrapper
   const handleContextNavigate = (tab: TabView, context: { className?: string, scheduleId?: string, targetDate?: string } = {}) => {
       if (tab === TabView.ATTENDANCE) navigate('/akademik/attendance', { state: context });
@@ -318,11 +341,12 @@ const AppContent = () => {
                     onNavigate={handleContextNavigate} identity={identity} schedules={schedules}
                     classes={classes} students={students} attendanceData={attendanceData}
                     gradeData={gradeData} subject={subject} tps={tps}
-                    calendarEvents={calendarEvents} 
+                    calendarEvents={calendarEvents}
+                    onSaveIdentity={handleSaveIdentity}
                 />
             } />
             
-            <Route path="identity" element={<IdentityForm data={identity} onSave={setIdentity} onBack={() => navigate('/dashboard')} onResetSemester={()=>{}} onResetYear={()=>{}} />} />
+            <Route path="identity" element={<IdentityForm data={identity} onSave={handleSaveIdentity} onBack={() => navigate('/dashboard')} onResetSemester={()=>{}} onResetYear={()=>{}} />} />
 
             <Route path="master">
                 <Route path="classes" element={<ClassManager identity={identity} classes={classes} students={students} onUpdateClasses={setClasses} onBack={() => navigate('/dashboard')} />} />
