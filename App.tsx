@@ -135,16 +135,39 @@ const AppContent = () => {
 
   const handleUserRestored = async (authUser: any) => {
       // 1. Fetch Teacher Profile from DB
+      let teacherData = null;
+      let dbError = null;
       try {
-        const { data: teacherData, error } = await supabase
+        // Try with schools join first
+        const res = await supabase
             .from('teachers')
             .select('*, schools(name)')
             .eq('email', authUser.email)
-            .single();
+            .maybeSingle(); // Use maybeSingle to not throw on 0 rows
         
-        if (error || !teacherData) {
-            console.error("Teacher profile not found", error);
-            // Fallback / Admin logic could go here
+        if (res.error && res.error.message.includes('relationship')) {
+             // Fallback if schema doesn't have foreign key
+             const fallbackRes = await supabase.from('teachers').select('*').eq('email', authUser.email).maybeSingle();
+             teacherData = fallbackRes.data;
+             dbError = fallbackRes.error;
+        } else {
+             teacherData = res.data;
+             dbError = res.error;
+        }
+
+        if (dbError || !teacherData) {
+            console.error("Teacher profile error/not found", dbError);
+            
+            // SUPER ADMIN FALLBACK: Allow specific emails to bypass if DB missing/RLS blocking
+            if (authUser.email === 'admin@siguru.com' || authUser.email === 'alimkamcl@gmail.com') {
+                console.log("Applying Super Admin Fallback");
+                teacherData = { 
+                    full_name: 'Super Admin Fallback', 
+                    role: 'ADMIN', 
+                    level: 'SMA', 
+                    is_active: true 
+                };
+            }
         }
 
         const appUser: User = {
@@ -156,7 +179,7 @@ const AppContent = () => {
             isActive: teacherData?.is_active === true
         };
 
-        if (!appUser.isActive && appUser.email !== 'admin@siguru.com') {
+        if (!appUser.isActive && appUser.email !== 'admin@siguru.com' && appUser.email !== 'alimkamcl@gmail.com') {
             await supabase.auth.signOut();
             Swal.fire({ title: 'Akun Belum Aktif', text: 'Silahkan hubungi Admin sekolah.', icon: 'warning' });
             setIsLoadingAuth(false);
