@@ -8,8 +8,10 @@ import { LoginPage, RegisterData, LoginData } from './components/LoginPage';
 import { MainLayout } from './components/layouts/MainLayout';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { NotFound } from './components/NotFound';
+import { usePersistedState, useSessionTimeout, useOfflineStatus } from './hooks/useAppOptimization';
 
 // --- LAZY LOAD COMPONENTS ---
+const LandingPage = React.lazy(() => import('./components/LandingPage').then(m => ({ default: m.LandingPage })));
 const GradingSheet = React.lazy(() => import('./components/GradingSheet').then(m => ({ default: m.GradingSheet })));
 const AttendanceSheet = React.lazy(() => import('./components/AttendanceSheet').then(m => ({ default: m.AttendanceSheet })));
 const IdentityForm = React.lazy(() => import('./components/IdentityForm').then(m => ({ default: m.IdentityForm })));
@@ -67,28 +69,40 @@ const PageLoader = () => (
 const AppContent = () => {
   const navigate = useNavigate();
   
+  // --- OFFLINE AND TIMEOUT (Optimizations) ---
+  const isOffline = useOfflineStatus();
+  
+  // Session timeout of 120 minutes (2 hours). Upon timeout, log out.
+  useSessionTimeout(120, () => {
+    if (currentUser) {
+      Swal.fire('Sesi Berakhir', 'Sesi Anda telah habis karena tidak ada aktivitas. Silakan login kembali.', 'info');
+      handleLogout(true); // force logout
+    }
+  });
+
   // --- AUTH STATE ---
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [isLoadingAuth, setIsLoadingAuth] = useState(true); 
+  const [currentUser, setCurrentUser] = usePersistedState<User | null>('app_currentUser', null);
+  // If we already have a hydrated user, we don't need to show a loading screen while validating
+  const [isLoadingAuth, setIsLoadingAuth] = useState(currentUser === null); 
   const [allUsers, setAllUsers] = useState<User[]>([]);
   
   // --- SETTINGS STATE ---
-  const [adminWaNumber, setAdminWaNumber] = useState('6282335454864');
+  const [adminWaNumber, setAdminWaNumber] = usePersistedState('app_adminWaNumber', '6282335454864');
 
-  // --- APP DATA STATE (Global Context fetched from DB) ---
-  const [identity, setIdentity] = useState<IdentityData>(INITIAL_IDENTITY);
-  const [students, setStudents] = useState<Student[]>([]); 
-  const [classes, setClasses] = useState<ClassInfo[]>([]); 
-  const [schedules, setSchedules] = useState<ScheduleItem[]>([]); 
-  const [tps, setTps] = useState<LearningObjective[]>([]); 
-  const [subject, setSubject] = useState<Subject>({ id: 's1', name: 'Mata Pelajaran', kktp: 75 });
+  // --- APP DATA STATE (Global Context fetched from DB, hydrated from local storage) ---
+  const [identity, setIdentity] = usePersistedState<IdentityData>('app_identity', INITIAL_IDENTITY);
+  const [students, setStudents] = usePersistedState<Student[]>('app_students', []); 
+  const [classes, setClasses] = usePersistedState<ClassInfo[]>('app_classes', []); 
+  const [schedules, setSchedules] = usePersistedState<ScheduleItem[]>('app_schedules', []); 
+  const [tps, setTps] = usePersistedState<LearningObjective[]>('app_tps', []); 
+  const [subject, setSubject] = usePersistedState<Subject>('app_subject', { id: 's1', name: 'Mata Pelajaran', kktp: 75 });
   
   // NOTE: Grade, Attendance, Journal data are now fetched inside their specific components 
-  // to avoid loading too much data at start. Passing empty/defaults here.
-  const [attendanceData, setAttendanceData] = useState<AttendanceData>({});
-  const [gradeData, setGradeData] = useState<GradeData>({}); 
-  const [journals, setJournals] = useState<JournalEntry[]>([]); 
-  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
+  // to avoid loading too much data at start. We use local persistence here for offline recovery/anti-hilang data
+  const [attendanceData, setAttendanceData] = usePersistedState<AttendanceData>('app_attendanceData', {});
+  const [gradeData, setGradeData] = usePersistedState<GradeData>('app_gradeData', {}); 
+  const [journals, setJournals] = usePersistedState<JournalEntry[]>('app_journals', []); 
+  const [calendarEvents, setCalendarEvents] = usePersistedState<CalendarEvent[]>('app_calendarEvents', []);
 
   // --- AUTH EFFECTS ---
   useEffect(() => {
@@ -134,7 +148,7 @@ const AppContent = () => {
         }
 
         const appUser: User = {
-            id: teacherData?.id || authUser.id, // Use Teacher ID for relations
+            id: teacherData?.id || authUser.id,
             email: authUser.email || '',
             name: teacherData?.full_name || authUser.email?.split('@')[0],
             role: teacherData?.role || 'SUBJECT_TEACHER',
@@ -150,21 +164,24 @@ const AppContent = () => {
         }
 
         setCurrentUser(appUser);
+        setIsLoadingAuth(false); // Stop loading UI early for minimal state hydration + fast perceptable load!
         
-        // 2. Fetch Global Master Data (Classes, Students, TPs)
-        await fetchGlobalData(appUser.id, teacherData);
-
-        if (appUser.role === 'ADMIN') {
-           navigate('/admin');
-        } else {
-           const hash = window.location.hash;
-           if (!hash || hash === '#/login' || hash === '#/') {
-               navigate('/dashboard');
+        // 2. Fetch Global Master Data (Classes, Students, TPs) in background
+        // Removing await allows the UI to render immediately with cached persisted data!
+        fetchGlobalData(appUser.id, teacherData).then(() => {
+           // Navigate logic after data is fetched if no hash present
+           if (appUser.role === 'ADMIN') {
+               navigate('/admin');
+           } else {
+               const hash = window.location.hash;
+               if (!hash || hash === '#/login' || hash === '#/') {
+                   navigate('/dashboard');
+               }
            }
-        }
+        });
+
       } catch (e) {
           console.error("Login process failed", e);
-      } finally {
           setIsLoadingAuth(false);
       }
   };
@@ -241,9 +258,14 @@ const AppContent = () => {
   const handleLogin = async (data: LoginData) => {
     setIsLoadingAuth(true);
     try {
-        const { error } = await supabase.auth.signInWithPassword({ email: data.email, password: data.password });
+        const cleanEmail = data.email.trim();
+        const { error } = await supabase.auth.signInWithPassword({ email: cleanEmail, password: data.password });
         if (error) {
-            Swal.fire('Gagal Masuk', error.message, 'error');
+            Swal.fire({
+                 title: 'Gagal Masuk', 
+                 text: `${error.message}\n\n[Debug: Pastikan config URL dan API Key benar]`, 
+                 icon: 'error'
+            });
             setIsLoadingAuth(false);
         }
     } catch (err: any) {
@@ -267,12 +289,38 @@ const AppContent = () => {
     }
   };
 
-  const handleLogout = async () => {
+  const handleLogout = async (force: boolean = false) => {
+    const performLogout = async () => {
+      // Security feature: clear sensitive local caches
+      localStorage.removeItem('app_currentUser');
+      localStorage.removeItem('app_identity');
+      localStorage.removeItem('app_students');
+      localStorage.removeItem('app_classes');
+      localStorage.removeItem('app_schedules');
+      localStorage.removeItem('app_tps');
+      localStorage.removeItem('app_subject');
+      localStorage.removeItem('app_attendanceData');
+      localStorage.removeItem('app_gradeData');
+      localStorage.removeItem('app_journals');
+      localStorage.removeItem('app_calendarEvents');
+      localStorage.removeItem('app_adminWaNumber');
+      localStorage.removeItem('supabase.auth.token'); // Fallback clear
+      
+      queryClient.clear();
+      await supabase.auth.signOut();
+      navigate('/');
+    };
+
+    if (force) {
+      await performLogout();
+      return;
+    }
+
     Swal.fire({
       title: 'Keluar Aplikasi?', icon: 'question', showCancelButton: true, confirmButtonText: 'Ya, Keluar'
     }).then(async (result: any) => {
       if (result.isConfirmed) {
-        await supabase.auth.signOut(); 
+        await performLogout(); 
       }
     });
   };
@@ -321,21 +369,28 @@ const AppContent = () => {
 
   return (
     <Suspense fallback={<PageLoader />}>
+      {isOffline && (
+        <div className="bg-red-500 text-white text-center py-2 px-4 shadow-md sticky top-0 z-[100] text-sm font-medium flex items-center justify-center gap-2">
+          <span className="material-symbols-outlined text-[18px]">wifi_off</span>
+          Koneksi Terputus - Anda sedang dalam mode offline. Beberapa fitur yang memerlukan sinkronisasi mungkin tidak berjalan.
+        </div>
+      )}
       <Routes>
+        <Route path="/" element={
+            currentUser ? <Navigate to="/dashboard" replace /> : <LandingPage />
+        } />
         <Route path="/login" element={
             currentUser ? <Navigate to="/dashboard" replace /> : 
             <LoginPage onLogin={handleLogin} onRegister={handleRegister} isLoading={isLoadingAuth} adminWaNumber={adminWaNumber} />
         } />
 
         <Route path="/admin" element={
-            <ProtectedRoute user={currentUser} allowedRoles={['ADMIN']}>
+            <ProtectedRoute user={currentUser} allowedRoles={['ADMIN']} redirectPath="/">
                 <AdminPanel users={allUsers} onAddUser={()=>{}} onDeleteUser={()=>{}} onUpdateUser={()=>{}} onApproveUser={()=>{}} onRejectUser={()=>{}} onGoToApp={() => navigate('/dashboard')} onLogout={handleLogout} waNumber={adminWaNumber} onUpdateWaNumber={setAdminWaNumber} />
             </ProtectedRoute>
         } />
 
-        <Route element={<ProtectedRoute user={currentUser}><MainLayout identity={identity} currentUser={currentUser} onLogout={handleLogout} /></ProtectedRoute>}>
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
-            
+        <Route element={<ProtectedRoute user={currentUser} redirectPath="/"><MainLayout identity={identity} currentUser={currentUser} onLogout={handleLogout} /></ProtectedRoute>}>
             <Route path="dashboard" element={
                 <Dashboard 
                     onNavigate={handleContextNavigate} identity={identity} schedules={schedules}

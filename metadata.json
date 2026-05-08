@@ -1,5 +1,6 @@
 {
   "name": "Sistem Administrasi Guru",
   "description": "Aplikasi web administrasi guru berbasis AI dengan fitur input nilai matriks real-time, arsitektur modular, dan dokumentasi sistem teknis.",
-  "requestFramePermissions": []
+  "requestFramePermissions": [],
+  "majorCapabilities": []
 }

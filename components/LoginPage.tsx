@@ -1,5 +1,6 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { TeacherRole, SchoolLevel } from '../types';
 import { supabase } from '../utils/supabase'; // Import supabase directly for validation check
 
@@ -36,8 +37,17 @@ const toTitleCase = (str: string) => {
 };
 
 export const LoginPage: React.FC<Props> = ({ onLogin, onRegister, onDemoLogin, isLoading, isConfigured = true, adminWaNumber }) => {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [mode, setMode] = useState<AuthMode>('LOGIN');
   const [showPassword, setShowPassword] = useState(false);
+
+  useEffect(() => {
+    const queryParams = new URLSearchParams(location.search);
+    if (queryParams.get('tab') === 'register') {
+      setMode('REGISTER');
+    }
+  }, [location.search]);
 
   // Login State
   const [loginForm, setLoginForm] = useState<LoginData>({ email: '', password: '' });
@@ -123,7 +133,16 @@ export const LoginPage: React.FC<Props> = ({ onLogin, onRegister, onDemoLogin, i
           <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-blue-400/5 rounded-full blur-3xl"></div>
        </div>
 
-       <div className="bg-white p-10 md:p-12 rounded-2xl shadow-xl w-full max-w-[450px] border border-slate-200 relative z-10 animate-in fade-in zoom-in duration-500">
+       {/* Back Button */}
+       <button 
+          onClick={() => navigate('/')}
+          className="absolute top-6 left-6 flex items-center gap-2 text-slate-500 hover:text-primary transition-colors font-bold text-sm bg-white/50 backdrop-blur-sm px-4 py-2 rounded-full border border-slate-200/60 shadow-sm"
+       >
+          <span className="material-symbols-outlined text-[18px]">arrow_back</span>
+          Halaman Utama
+       </button>
+
+       <div className="bg-white p-10 md:p-12 rounded-2xl shadow-xl w-full max-w-[450px] border border-slate-200 relative z-10 animate-in fade-in zoom-in duration-500 mt-12 md:mt-0">
           
           <div className="flex flex-col items-center mb-8 text-center">
             <div className="bg-gradient-to-br from-primary to-blue-600 size-14 rounded-xl flex items-center justify-center text-white shadow-lg shadow-blue-200 mb-4">
