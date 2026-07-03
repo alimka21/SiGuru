@@ -156,17 +156,30 @@ const AppContent = () => {
         }
 
         if (dbError || !teacherData) {
-            console.error("Teacher profile error/not found", dbError);
+            const isSuperAdminEmail = authUser.email === 'admin@siguru.com' || authUser.email === 'alimkamcl@gmail.com';
             
-            // SUPER ADMIN FALLBACK: Allow specific emails to bypass if DB missing/RLS blocking
-            if (authUser.email === 'admin@siguru.com' || authUser.email === 'alimkamcl@gmail.com') {
-                console.log("Applying Super Admin Fallback");
+            if (isSuperAdminEmail) {
+                console.log("Applying Super Admin Fallback for:", authUser.email);
                 teacherData = { 
-                    full_name: 'Super Admin Fallback', 
+                    full_name: 'Super Admin', 
                     role: 'ADMIN', 
                     level: 'SMA', 
-                    is_active: true 
+                    is_active: true,
+                    id: authUser.id
                 };
+                
+                // Opt-in: Try to silently create the profile to fix future loads
+                supabase.from('teachers').upsert({
+                    id: authUser.id,
+                    email: authUser.email,
+                    full_name: 'Super Admin',
+                    role: 'ADMIN',
+                    level: 'SMA',
+                    is_active: true
+                }).then(() => {});
+
+            } else {
+                console.error("Teacher profile error/not found", dbError);
             }
         }
 
@@ -315,19 +328,8 @@ const AppContent = () => {
   const handleLogout = async (force: boolean = false) => {
     const performLogout = async () => {
       // Security feature: clear sensitive local caches
-      localStorage.removeItem('app_currentUser');
-      localStorage.removeItem('app_identity');
-      localStorage.removeItem('app_students');
-      localStorage.removeItem('app_classes');
-      localStorage.removeItem('app_schedules');
-      localStorage.removeItem('app_tps');
-      localStorage.removeItem('app_subject');
-      localStorage.removeItem('app_attendanceData');
-      localStorage.removeItem('app_gradeData');
-      localStorage.removeItem('app_journals');
-      localStorage.removeItem('app_calendarEvents');
-      localStorage.removeItem('app_adminWaNumber');
-      localStorage.removeItem('supabase.auth.token'); // Fallback clear
+      localStorage.clear();
+      sessionStorage.clear();
       
       queryClient.clear();
       await supabase.auth.signOut();
@@ -340,7 +342,12 @@ const AppContent = () => {
     }
 
     Swal.fire({
-      title: 'Keluar Aplikasi?', icon: 'question', showCancelButton: true, confirmButtonText: 'Ya, Keluar'
+      title: 'Keluar Aplikasi?', 
+      text: 'Anda akan keluar dan semua cache sesi akan dihapus.',
+      icon: 'question', 
+      showCancelButton: true, 
+      confirmButtonText: 'Ya, Keluar',
+      cancelButtonText: 'Batal'
     }).then(async (result: any) => {
       if (result.isConfirmed) {
         await performLogout(); 
@@ -400,20 +407,20 @@ const AppContent = () => {
       )}
       <Routes>
         <Route path="/" element={
-            currentUser ? <Navigate to="/dashboard" replace /> : <LandingPage />
+            currentUser ? <Navigate to={currentUser.role === 'ADMIN' ? "/admin" : "/dashboard"} replace /> : <LandingPage />
         } />
         <Route path="/login" element={
-            currentUser ? <Navigate to="/dashboard" replace /> : 
+            currentUser ? <Navigate to={currentUser.role === 'ADMIN' ? "/admin" : "/dashboard"} replace /> : 
             <LoginPage onLogin={handleLogin} onRegister={handleRegister} isLoading={isLoadingAuth} adminWaNumber={adminWaNumber} />
         } />
 
         <Route path="/admin" element={
             <ProtectedRoute user={currentUser} allowedRoles={['ADMIN']} redirectPath="/">
-                <AdminPanel users={allUsers} onAddUser={()=>{}} onDeleteUser={()=>{}} onUpdateUser={()=>{}} onApproveUser={()=>{}} onRejectUser={()=>{}} onGoToApp={() => navigate('/dashboard')} onLogout={handleLogout} waNumber={adminWaNumber} onUpdateWaNumber={setAdminWaNumber} />
+                <AdminPanel users={allUsers} onAddUser={()=>{}} onDeleteUser={()=>{}} onUpdateUser={()=>{}} onApproveUser={()=>{}} onRejectUser={()=>{}} onGoToApp={() => navigate('/dashboard')} onLogout={() => handleLogout()} waNumber={adminWaNumber} onUpdateWaNumber={setAdminWaNumber} />
             </ProtectedRoute>
         } />
 
-        <Route element={<ProtectedRoute user={currentUser} redirectPath="/"><MainLayout identity={identity} currentUser={currentUser} onLogout={handleLogout} /></ProtectedRoute>}>
+        <Route element={<ProtectedRoute user={currentUser} redirectPath="/"><MainLayout identity={identity} currentUser={currentUser} onLogout={() => handleLogout()} /></ProtectedRoute>}>
             <Route path="dashboard" element={
                 <Dashboard 
                     onNavigate={handleContextNavigate} identity={identity} schedules={schedules}

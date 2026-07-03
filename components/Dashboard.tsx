@@ -156,7 +156,7 @@ export const Dashboard: React.FC<Props> = (props) => {
           ? (props.identity.className && props.identity.className !== '')
           : (props.identity.subjectName && props.identity.subjectName !== 'Mata Pelajaran' && props.identity.subjectName !== '');
       
-      if (!isSchoolSet || !isContextSet) {
+      if (props.identity.role !== 'ADMIN' && (!isSchoolSet || !isContextSet)) {
           setShowOnboarding(true);
       }
   }, [props.identity]);
