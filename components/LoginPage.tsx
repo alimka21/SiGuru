@@ -18,6 +18,8 @@ export interface RegisterData {
   name: string;
   role: TeacherRole;
   level: SchoolLevel;
+  subscriptionPlan?: 'BASIC' | 'TRIWULAN' | 'SEMESTER' | 'PREMIUM' | 'NONE';
+  subscriptionEndDate?: string | null;
 }
 
 interface Props {
@@ -58,7 +60,8 @@ export const LoginPage: React.FC<Props> = ({ onLogin, onRegister, onDemoLogin, i
       password: '',
       name: '',
       role: 'SUBJECT_TEACHER', // Default
-      level: 'SMA' // Default fallback
+      level: 'SMA', // Default fallback
+      subscriptionPlan: 'BASIC'
   });
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
@@ -118,7 +121,7 @@ export const LoginPage: React.FC<Props> = ({ onLogin, onRegister, onDemoLogin, i
             return;
         }
 
-        const message = `Halo Admin, saya *${name}* (%0AEmail: ${email})%0A%0ASaya lupa password akun SiGuru saya. Mohon bantuannya untuk reset password. Terima kasih.`;
+        const message = `Halo Admin, saya *${name}* (%0AEmail: ${email})%0A%0ASaya lupa password akun SiGuru Pro saya. Mohon bantuannya untuk reset password. Terima kasih.`;
         const waLink = `https://wa.me/${adminWaNumber}?text=${message}`;
         window.open(waLink, '_blank');
       }
@@ -148,7 +151,7 @@ export const LoginPage: React.FC<Props> = ({ onLogin, onRegister, onDemoLogin, i
             <div className="bg-gradient-to-br from-primary to-blue-600 size-14 rounded-xl flex items-center justify-center text-white shadow-lg shadow-blue-200 mb-4">
                <span className="material-symbols-outlined text-3xl">auto_stories</span>
             </div>
-            <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">SiGuru</h1>
+            <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">SiGuru Pro</h1>
             <p className="text-slate-500 text-sm font-medium">Sistem Administrasi Guru</p>
           </div>
 
@@ -311,6 +314,20 @@ export const LoginPage: React.FC<Props> = ({ onLogin, onRegister, onDemoLogin, i
                     </div>
                 </div>
 
+                <div className="space-y-1 mt-3">
+                    <label className="text-xs font-bold text-slate-500 uppercase ml-1">Paket Berlangganan</label>
+                    <select
+                        className="w-full px-3 py-3 border border-slate-200 rounded-lg text-xs font-bold text-slate-900 focus:ring-2 focus:ring-primary focus:border-transparent bg-slate-50 focus:bg-white cursor-pointer"
+                        value={registerForm.subscriptionPlan}
+                        onChange={(e) => setRegisterForm({...registerForm, subscriptionPlan: e.target.value as any})}
+                    >
+                        <option value="BASIC">BASIC (Rp 15.000 / 1 Bulan)</option>
+                        <option value="TRIWULAN">TRIWULAN (Rp 39.000 / 3 Bulan) - Terfavorit</option>
+                        <option value="SEMESTER">SEMESTER (Rp 69.000 / 6 Bulan)</option>
+                        <option value="PREMIUM">PREMIUM (Rp 109.000 / 1 Tahun) - Paling Hemat</option>
+                    </select>
+                </div>
+
                 <button
                     type="submit"
                     disabled={isLoading}
@@ -335,7 +352,7 @@ export const LoginPage: React.FC<Props> = ({ onLogin, onRegister, onDemoLogin, i
        </div>
        
        <footer className="mt-8 text-center flex flex-col items-center gap-1">
-         <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">SiGuru &copy; 2026</p>
+         <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">SiGuru Pro &copy; 2026</p>
        </footer>
     </div>
   );

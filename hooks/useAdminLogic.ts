@@ -28,10 +28,12 @@ export const useAdminLogic = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [userTab, setUserTab] = useState<'ACTIVE' | 'PENDING'>('ACTIVE');
   const [tempWaNumber, setTempWaNumber] = useState(waNumber);
+  const [filterPlan, setFilterPlan] = useState<string>('ALL');
+  const [filterLevel, setFilterLevel] = useState<string>('ALL');
   
   // Form Data State
   const [formData, setFormData] = useState<RegisterData>({ 
-      email: '', name: '', password: '', role: 'SUBJECT_TEACHER', level: 'SMA' 
+      email: '', name: '', password: '', role: 'SUBJECT_TEACHER', level: 'SMA', subscriptionPlan: 'BASIC' 
   });
 
   // --- DERIVED STATE (MEMOS) ---
@@ -51,12 +53,21 @@ export const useAdminLogic = ({
   }, [users]);
 
   const filteredUsers = useMemo(() => {
-    const byTab = users.filter(u => userTab === 'ACTIVE' ? u.isActive : !u.isActive);
+    let byTab = users.filter(u => userTab === 'ACTIVE' ? u.isActive : !u.isActive);
+    
+    if (filterPlan !== 'ALL') {
+      byTab = byTab.filter(u => u.subscriptionPlan === filterPlan);
+    }
+    
+    if (filterLevel !== 'ALL') {
+      byTab = byTab.filter(u => u.level === filterLevel);
+    }
+
     return byTab.filter(u => 
       u.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
       u.email.toLowerCase().includes(searchQuery.toLowerCase())
     );
-  }, [users, searchQuery, userTab]);
+  }, [users, searchQuery, userTab, filterPlan, filterLevel]);
 
   // --- HANDLERS ---
 
@@ -68,11 +79,13 @@ export const useAdminLogic = ({
           name: user.name, 
           password: '', 
           role: user.role, 
-          level: user.level || 'SMA' 
+          level: user.level || 'SMA',
+          subscriptionPlan: user.subscriptionPlan || 'NONE',
+          subscriptionEndDate: user.subscriptionEndDate ? new Date(user.subscriptionEndDate).toISOString().split('T')[0] : ''
       });
     } else {
       setEditingUser(null);
-      setFormData({ email: '', name: '', password: '', role: 'SUBJECT_TEACHER', level: 'SMA' });
+      setFormData({ email: '', name: '', password: '', role: 'SUBJECT_TEACHER', level: 'SMA', subscriptionPlan: 'BASIC', subscriptionEndDate: '' });
     }
     setIsModalOpen(true);
   };
@@ -122,14 +135,18 @@ export const useAdminLogic = ({
       searchQuery,
       userTab,
       tempWaNumber,
-      formData
+      formData,
+      filterPlan,
+      filterLevel
     },
     setters: {
       setIsModalOpen,
       setSearchQuery,
       setUserTab,
       setTempWaNumber,
-      setFormData
+      setFormData,
+      setFilterPlan,
+      setFilterLevel
     },
     computed: {
       stats,

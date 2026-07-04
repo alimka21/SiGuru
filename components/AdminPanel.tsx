@@ -206,19 +206,53 @@ export const AdminPanel: React.FC<Props> = (props) => {
                     </div>
                 </div>
 
-                <div className="p-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
-                    <h3 className="font-bold text-slate-700 ml-2">
+                <div className="p-4 border-b border-slate-200 bg-slate-50 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                    <h3 className="font-bold text-slate-700 ml-2 shrink-0">
                         {userTab === 'ACTIVE' ? 'Daftar Guru Terdaftar' : 'Permintaan Akses Baru'}
                     </h3>
-                    <div className="relative w-full max-w-sm">
-                        <span className="material-symbols-outlined absolute left-3 top-2.5 text-slate-400 text-lg">search</span>
-                        <input 
-                            type="text" 
-                            placeholder="Cari nama atau email..." 
-                            className="pl-10 pr-4 py-2 border border-slate-200 rounded-lg text-sm font-bold text-slate-900 w-full focus:ring-2 focus:ring-primary focus:border-transparent outline-none placeholder:text-slate-400 bg-white"
-                            value={searchQuery}
-                            onChange={(e) => setters.setSearchQuery(e.target.value)}
-                        />
+                    <div className="flex flex-col sm:flex-row items-center gap-3 w-full lg:w-auto">
+                        {/* Filter Paket */}
+                        <div className="flex items-center gap-2 w-full sm:w-auto">
+                            <span className="text-xs font-bold text-slate-500 whitespace-nowrap">Paket:</span>
+                            <select
+                                value={state.filterPlan}
+                                onChange={(e) => setters.setFilterPlan(e.target.value)}
+                                className="border border-slate-200 rounded-lg text-xs font-bold text-slate-900 px-3 py-2 bg-white focus:ring-2 focus:ring-primary cursor-pointer w-full sm:w-auto outline-none"
+                            >
+                                <option value="ALL">Semua Paket</option>
+                                <option value="BASIC">BASIC</option>
+                                <option value="TRIWULAN">TRIWULAN</option>
+                                <option value="SEMESTER">SEMESTER</option>
+                                <option value="PREMIUM">PREMIUM</option>
+                                <option value="NONE">NONE / EXPIRED</option>
+                            </select>
+                        </div>
+                        {/* Filter Jenjang */}
+                        <div className="flex items-center gap-2 w-full sm:w-auto">
+                            <span className="text-xs font-bold text-slate-500 whitespace-nowrap">Jenjang:</span>
+                            <select
+                                value={state.filterLevel}
+                                onChange={(e) => setters.setFilterLevel(e.target.value)}
+                                className="border border-slate-200 rounded-lg text-xs font-bold text-slate-900 px-3 py-2 bg-white focus:ring-2 focus:ring-primary cursor-pointer w-full sm:w-auto outline-none"
+                            >
+                                <option value="ALL">Semua Jenjang</option>
+                                <option value="SD">SD</option>
+                                <option value="SMP">SMP</option>
+                                <option value="SMA">SMA</option>
+                                <option value="SMK">SMK</option>
+                            </select>
+                        </div>
+                        {/* Search Input */}
+                        <div className="relative w-full sm:w-[240px]">
+                            <span className="material-symbols-outlined absolute left-3 top-2 text-slate-400 text-lg">search</span>
+                            <input 
+                                type="text" 
+                                placeholder="Cari nama atau email..." 
+                                className="pl-9 pr-4 py-1.5 border border-slate-200 rounded-lg text-xs font-bold text-slate-900 w-full focus:ring-2 focus:ring-primary focus:border-transparent outline-none placeholder:text-slate-400 bg-white"
+                                value={searchQuery}
+                                onChange={(e) => setters.setSearchQuery(e.target.value)}
+                            />
+                        </div>
                     </div>
                 </div>
 
@@ -230,6 +264,8 @@ export const AdminPanel: React.FC<Props> = (props) => {
                             <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Email Login</th>
                             <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Role</th>
                             <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Jenjang</th>
+                            <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Paket</th>
+                            <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Masa Aktif</th>
                             <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider bg-yellow-50 text-yellow-700 border-l border-r border-yellow-200">Password</th>
                             <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Aksi</th>
                         </tr>
@@ -252,6 +288,38 @@ export const AdminPanel: React.FC<Props> = (props) => {
                                         </span>
                                      ) : (
                                          <span className="text-xs text-slate-300">-</span>
+                                     )}
+                                </td>
+                                <td className="px-6 py-4">
+                                     <span className={`text-xs font-black px-2 py-1 rounded border ${
+                                       user.subscriptionPlan === 'PREMIUM' ? 'bg-orange-50 text-orange-700 border-orange-200' :
+                                       user.subscriptionPlan === 'SEMESTER' ? 'bg-purple-50 text-purple-700 border-purple-200' :
+                                       user.subscriptionPlan === 'TRIWULAN' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                                       user.subscriptionPlan === 'BASIC' ? 'bg-slate-50 text-slate-700 border-slate-200' :
+                                       'bg-rose-50 text-rose-700 border-rose-200'
+                                     }`}>
+                                         {user.subscriptionPlan || 'NONE'}
+                                     </span>
+                                </td>
+                                <td className="px-6 py-4 text-xs font-medium">
+                                     {user.role === 'ADMIN' ? (
+                                       <span className="text-slate-400">Sesi Tak Terbatas</span>
+                                     ) : user.subscriptionEndDate ? (
+                                       (() => {
+                                         const end = new Date(user.subscriptionEndDate);
+                                         const now = new Date();
+                                         const diffMs = end.getTime() - now.getTime();
+                                         if (diffMs <= 0) {
+                                           return <span className="text-red-600 font-bold bg-red-50 border border-red-100 px-2 py-0.5 rounded">Kadaluarsa</span>;
+                                         }
+                                         const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+                                         if (diffDays <= 7) {
+                                           return <span className="text-amber-600 font-bold bg-amber-50 border border-amber-100 px-2 py-0.5 rounded">Sisa {diffDays} hari</span>;
+                                         }
+                                         return <span className="text-slate-600 font-semibold">{end.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })} ({diffDays} hari)</span>;
+                                       })()
+                                     ) : (
+                                       <span className="text-rose-500 font-bold bg-rose-50 border border-rose-100 px-2 py-0.5 rounded">Belum Diatur</span>
                                      )}
                                 </td>
                                 {/* PASSWORD COLUMN */}
@@ -294,7 +362,7 @@ export const AdminPanel: React.FC<Props> = (props) => {
                             ))
                         ) : (
                             <tr>
-                            <td colSpan={6} className="p-12 text-center text-slate-400 italic">
+                            <td colSpan={8} className="p-12 text-center text-slate-400 italic">
                                 {userTab === 'ACTIVE' 
                                     ? 'Tidak ada pengguna aktif yang ditemukan.' 
                                     : 'Tidak ada calon pengguna yang menunggu verifikasi.'}
@@ -398,6 +466,57 @@ export const AdminPanel: React.FC<Props> = (props) => {
                         </select>
                      </div>
                   </div>
+
+                  {/* Subscription Plan Selection */}
+                  {formData.role !== 'ADMIN' && (
+                     <>
+                        <div className="space-y-1">
+                           <label className="text-xs font-bold text-slate-500 uppercase">Paket Berlangganan</label>
+                           <select
+                              className="w-full border-slate-200 rounded-lg text-xs font-bold text-slate-900 focus:ring-2 focus:ring-primary focus:border-transparent bg-slate-50"
+                              value={formData.subscriptionPlan || 'BASIC'}
+                              onChange={(e) => {
+                                 const plan = e.target.value as any;
+                                 let days = 30;
+                                 if (plan === 'TRIWULAN') days = 90;
+                                 else if (plan === 'SEMESTER') days = 180;
+                                 else if (plan === 'PREMIUM') days = 365;
+                                 else if (plan === 'NONE') days = 0;
+                                 
+                                 const d = new Date();
+                                 d.setDate(d.getDate() + days);
+                                 const formattedDate = plan === 'NONE' ? '' : d.toISOString().split('T')[0];
+                                 
+                                 setters.setFormData({
+                                    ...formData, 
+                                    subscriptionPlan: plan,
+                                    subscriptionEndDate: formattedDate
+                                 });
+                              }}
+                           >
+                              <option value="BASIC">BASIC (Rp 15.000 / 1 Bulan)</option>
+                              <option value="TRIWULAN">TRIWULAN (Rp 39.000 / 3 Bulan)</option>
+                              <option value="SEMESTER">SEMESTER (Rp 69.000 / 6 Bulan)</option>
+                              <option value="PREMIUM">PREMIUM (Rp 109.000 / 1 Tahun)</option>
+                              <option value="NONE">NONE (Expired / Tanpa Paket)</option>
+                           </select>
+                        </div>
+
+                        {/* Tanggal Berakhir Masa Aktif (Manual Durasi / Extend) */}
+                        <div className="space-y-1">
+                           <label className="text-xs font-bold text-slate-500 uppercase">Tanggal Berakhir Paket (Masa Aktif)</label>
+                           <input 
+                              type="date"
+                              className="w-full border-slate-200 rounded-lg text-sm font-bold text-slate-900 focus:ring-2 focus:ring-primary focus:border-transparent bg-white"
+                              value={formData.subscriptionEndDate || ''}
+                              onChange={(e) => setters.setFormData({...formData, subscriptionEndDate: e.target.value})}
+                           />
+                           <p className="text-[10px] text-slate-400">
+                              Ubah tanggal di atas secara manual untuk menambah durasi paket akun guru ini.
+                           </p>
+                        </div>
+                     </>
+                  )}
 
                   <div className="pt-4 flex gap-3">
                      <button type="button" onClick={() => setters.setIsModalOpen(false)} className="flex-1 py-3 border border-slate-200 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition-colors">Batal</button>

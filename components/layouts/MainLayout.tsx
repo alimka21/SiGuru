@@ -63,7 +63,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ identity, currentUser, o
             </div>
             {!isSidebarCollapsed && (
               <div className="whitespace-nowrap overflow-hidden">
-                <h1 className="text-slate-900 text-base font-bold leading-tight">SiGuru</h1>
+                <h1 className="text-slate-900 text-base font-bold leading-tight">SiGuru Pro</h1>
                 <p className="text-slate-500 text-sm font-normal mt-0.5">App Admin Guru</p>
               </div>
             )}
@@ -166,7 +166,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ identity, currentUser, o
           </div>
 
           <footer className="py-6 text-center border-t border-slate-200/60 mt-auto bg-background-light">
-              <p className="text-xs font-bold text-slate-400">SiGuru - Aplikasi Administrasi Guru  <span className="mx-1 text-slate-300">|</span>  Copyright 2026</p>
+              <p className="text-xs font-bold text-slate-400">SiGuru Pro - Aplikasi Administrasi Guru  <span className="mx-1 text-slate-300">|</span>  Copyright 2026</p>
           </footer>
         </div>
       </main>

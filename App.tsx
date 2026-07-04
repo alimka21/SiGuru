@@ -24,6 +24,7 @@ const RecapManager = React.lazy(() => import('./components/RecapManager').then(m
 const JournalManager = React.lazy(() => import('./components/JournalManager').then(m => ({ default: m.JournalManager })));
 const CalendarManager = React.lazy(() => import('./components/CalendarManager').then(m => ({ default: m.CalendarManager })));
 const AdminPanel = React.lazy(() => import('./components/AdminPanel').then(m => ({ default: m.AdminPanel })));
+const BillingPaywall = React.lazy(() => import('./components/BillingPaywall').then(m => ({ default: m.BillingPaywall })));
 
 import { 
   Student, LearningObjective, Subject, IdentityData, 
@@ -115,10 +116,15 @@ const AppContent = () => {
         try {
             const { data: { session }, error } = await supabase.auth.getSession();
             if (error) throw error;
-            if (session?.user) await handleUserRestored(session.user);
-            else setIsLoadingAuth(false);
+            if (session?.user) {
+              await handleUserRestored(session.user);
+            } else {
+              setCurrentUser(null);
+              setIsLoadingAuth(false);
+            }
         } catch (err) {
             console.error("Session Validation Failed:", err);
+            setCurrentUser(null);
             setIsLoadingAuth(false);
         }
     };
@@ -126,12 +132,56 @@ const AppContent = () => {
     initSession();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_IN' && session?.user) handleUserRestored(session.user);
-      else if (event === 'SIGNED_OUT') resetAppState();
+      if (event === 'SIGNED_IN' && session?.user) {
+        handleUserRestored(session.user);
+      } else if (event === 'SIGNED_OUT') {
+        const storedUser = localStorage.getItem('app_currentUser');
+        const wasLoggedIn = storedUser && storedUser !== 'null';
+        const currentHash = window.location.hash;
+        const isPublicPath = !currentHash || currentHash === '#/' || currentHash === '#/login' || currentHash === '#' || currentHash === '#/register';
+        if (wasLoggedIn || !isPublicPath) {
+          resetAppState();
+        } else {
+          setCurrentUser(null);
+          setIsLoadingAuth(false);
+        }
+      }
     });
 
     return () => subscription.unsubscribe();
   }, []);
+
+  // Fetch all users automatically when ADMIN logs in
+  useEffect(() => {
+    if (currentUser?.role === 'ADMIN') {
+      const fetchAdminUsers = async () => {
+        try {
+          const { data, error } = await supabase
+            .from('teachers')
+            .select('*')
+            .order('created_at', { ascending: false });
+          
+          if (error) throw error;
+          if (data) {
+            setAllUsers(data.map((t: any) => ({
+              id: t.id,
+              email: t.email,
+              name: t.full_name,
+              role: t.role,
+              level: t.level,
+              isActive: t.is_active === true,
+              subscriptionPlan: t.subscription_plan || 'NONE',
+              subscriptionEndDate: t.subscription_end_date || null,
+              password: t.password_plain || ''
+            })));
+          }
+        } catch (err) {
+          console.error("Failed to load admin users:", err);
+        }
+      };
+      fetchAdminUsers();
+    }
+  }, [currentUser]);
 
   const handleUserRestored = async (authUser: any) => {
       // 1. Fetch Teacher Profile from DB
@@ -189,12 +239,61 @@ const AppContent = () => {
             name: teacherData?.full_name || authUser.email?.split('@')[0],
             role: teacherData?.role || 'SUBJECT_TEACHER',
             level: teacherData?.level || 'SMA',
-            isActive: teacherData?.is_active === true
+            isActive: teacherData?.is_active === true,
+            subscriptionPlan: teacherData?.subscription_plan || 'NONE',
+            subscriptionEndDate: teacherData?.subscription_end_date || null
         };
 
-        if (!appUser.isActive && appUser.email !== 'admin@siguru.com' && appUser.email !== 'alimkamcl@gmail.com') {
+        const isSuperAdmin = appUser.email === 'admin@siguru.com' || appUser.email === 'alimkamcl@gmail.com' || appUser.role === 'ADMIN';
+
+        if (!isSuperAdmin && appUser.subscriptionEndDate && new Date(appUser.subscriptionEndDate) < new Date()) {
             await supabase.auth.signOut();
-            Swal.fire({ title: 'Akun Belum Aktif', text: 'Silahkan hubungi Admin sekolah.', icon: 'warning' });
+            Swal.fire({
+                title: 'Mohon Maaf',
+                text: 'Akun ini sudah mencapai batas waktu penggunaan Paket.',
+                icon: 'error',
+                showCancelButton: true,
+                confirmButtonText: 'Hubungi Admin',
+                cancelButtonText: 'Cek Harga Paket',
+                confirmButtonColor: '#16a34a',
+                cancelButtonColor: '#2563eb',
+                reverseButtons: true
+            }).then((result: any) => {
+                if (result.isConfirmed) {
+                    const waText = encodeURIComponent(`Halo Admin SiGuru Pro,\n\nAkun saya (${appUser.email}) sudah mencapai batas waktu penggunaan Paket. Saya ingin memperpanjang paket langganan saya.`);
+                    window.open(`https://wa.me/${adminWaNumber || '6282335454864'}?text=${waText}`, '_blank');
+                } else if (result.dismiss === Swal.DismissReason.cancel) {
+                    navigate('/');
+                    setTimeout(() => {
+                        const el = document.getElementById('harga');
+                        if (el) {
+                            el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }
+                    }, 500);
+                }
+            });
+            setIsLoadingAuth(false);
+            return;
+        }
+
+        if (!appUser.isActive && !isSuperAdmin) {
+            await supabase.auth.signOut();
+            Swal.fire({
+                title: 'Terimakasih sudah mendaftar.',
+                text: 'Hubungi admin untuk melakukan verifikasi',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonText: 'Hubungi Admin',
+                cancelButtonText: 'Kembali Ke Beranda',
+                confirmButtonColor: '#16a34a',
+                cancelButtonColor: '#64748b',
+                reverseButtons: true
+            }).then((result: any) => {
+                if (result.isConfirmed) {
+                    window.open(`https://wa.me/${adminWaNumber || '6282335454864'}`, '_blank');
+                }
+                navigate('/');
+            });
             setIsLoadingAuth(false);
             return;
         }
@@ -309,15 +408,78 @@ const AppContent = () => {
     }
   };
 
+  const calculateSubscriptionEndDate = (plan?: string): string => {
+    let days = 30; // BASIC
+    if (plan === 'TRIWULAN') days = 90;
+    else if (plan === 'SEMESTER') days = 180;
+    else if (plan === 'PREMIUM') days = 365;
+    else if (plan === 'NONE') days = 7;
+    
+    const d = new Date();
+    d.setDate(d.getDate() + days);
+    return d.toISOString();
+  };
+
   const handleRegister = async (data: RegisterData) => {
     setIsLoadingAuth(true);
-    // ... (Keep existing register logic via Supabase)
-    // For brevity, assuming existing logic or RPC
     try {
-        // Just a placeholder for the actual complex registration flow
-        const { error } = await supabase.auth.signUp({ email: data.email, password: data.password });
-        if(error) throw error;
-        Swal.fire('Sukses', 'Silahkan cek email untuk verifikasi.', 'success');
+        const { data: authData, error } = await supabase.auth.signUp({ 
+            email: data.email, 
+            password: data.password,
+            options: {
+                data: {
+                    full_name: data.name,
+                    role: data.role || 'SUBJECT_TEACHER',
+                    level: data.level || 'SMA',
+                    subscription_plan: data.subscriptionPlan || 'BASIC',
+                    password_plain: data.password
+                }
+            }
+        });
+        if (error) throw error;
+        
+        const userId = authData.user?.id;
+        if (userId) {
+            const endDate = calculateSubscriptionEndDate(data.subscriptionPlan);
+            
+            // Insert profile into teachers table
+            try {
+                const { error: dbError } = await supabase.from('teachers').upsert({
+                    id: userId,
+                    email: data.email,
+                    full_name: data.name,
+                    role: data.role || 'SUBJECT_TEACHER',
+                    level: data.level || 'SMA',
+                    is_active: false, // Pending Admin Approval
+                    subscription_plan: data.subscriptionPlan || 'BASIC',
+                    subscription_end_date: endDate,
+                    password_plain: data.password
+                });
+                
+                if (dbError) {
+                    console.warn("Client-side insert returned warning (trigger should have handled it):", dbError);
+                }
+            } catch (dbErr) {
+                console.warn("Client-side insert error, trigger probably handled it successfully:", dbErr);
+            }
+        }
+        
+        Swal.fire({
+            title: 'Terimakasih sudah mendaftar.',
+            text: 'Hubungi admin untuk melakukan verifikasi',
+            icon: 'success',
+            showCancelButton: true,
+            confirmButtonText: 'Hubungi Admin',
+            cancelButtonText: 'Kembali Ke Beranda',
+            confirmButtonColor: '#16a34a',
+            cancelButtonColor: '#64748b',
+            reverseButtons: true
+        }).then((result: any) => {
+            if (result.isConfirmed) {
+                window.open(`https://wa.me/${adminWaNumber || '6282335454864'}`, '_blank');
+            }
+            navigate('/');
+        });
         setIsLoadingAuth(false);
     } catch(e: any) {
         Swal.fire('Error', e.message, 'error');
@@ -353,6 +515,167 @@ const AppContent = () => {
         await performLogout(); 
       }
     });
+  };
+
+  // --- ADMIN ACTIONS (DATABASE SYNC) ---
+
+  const handleAdminAddUser = async (userForm: RegisterData) => {
+    try {
+      // Create Auth user via Supabase
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: userForm.email,
+        password: userForm.password || '123456'
+      });
+      if (authError) throw authError;
+
+      const userId = authData.user?.id;
+      if (!userId) throw new Error("Gagal membuat user ID dari Auth.");
+
+      // Calculate initial end date based on plan or custom input
+      let endDate: string | null = null;
+      if (userForm.role === 'ADMIN') {
+        endDate = null;
+      } else if (userForm.subscriptionPlan === 'NONE') {
+        endDate = null;
+      } else if (userForm.subscriptionEndDate) {
+        endDate = new Date(userForm.subscriptionEndDate + 'T23:59:59').toISOString();
+      } else {
+        endDate = calculateSubscriptionEndDate(userForm.subscriptionPlan);
+      }
+
+      // Insert into teachers
+      const { error: dbError } = await supabase.from('teachers').insert({
+        id: userId,
+        email: userForm.email,
+        full_name: userForm.name,
+        role: userForm.role || 'SUBJECT_TEACHER',
+        level: userForm.level || 'SMA',
+        is_active: true, // Manual admin creations are auto-activated
+        subscription_plan: userForm.subscriptionPlan || 'BASIC',
+        subscription_end_date: endDate,
+        password_plain: userForm.password
+      });
+      if (dbError) throw dbError;
+
+      Swal.fire('Sukses', `Akses guru "${userForm.name}" berhasil dibuat.`, 'success');
+      
+      // Refresh User list
+      const { data: updatedUsers } = await supabase.from('teachers').select('*').order('created_at', { ascending: false });
+      if (updatedUsers) {
+        setAllUsers(updatedUsers.map((t: any) => ({
+          id: t.id,
+          email: t.email,
+          name: t.full_name,
+          role: t.role,
+          level: t.level,
+          isActive: t.is_active === true,
+          subscriptionPlan: t.subscription_plan || 'NONE',
+          subscriptionEndDate: t.subscription_end_date || null,
+          password: t.password_plain || ''
+        })));
+      }
+    } catch (e: any) {
+      console.error(e);
+      Swal.fire('Error', e.message, 'error');
+    }
+  };
+
+  const handleAdminUpdateUser = async (userId: string, userForm: RegisterData) => {
+    try {
+      const existingUser = allUsers.find(u => u.id === userId);
+      if (!existingUser) throw new Error("Pengguna tidak ditemukan.");
+
+      // Calculate end date. If user specified custom date in form, use it!
+      let endDate: string | null = null;
+      if (userForm.role === 'ADMIN') {
+        endDate = null;
+      } else if (userForm.subscriptionPlan === 'NONE') {
+        endDate = null;
+      } else if (userForm.subscriptionEndDate) {
+        endDate = new Date(userForm.subscriptionEndDate + 'T23:59:59').toISOString();
+      } else if (existingUser.subscriptionPlan !== userForm.subscriptionPlan) {
+        endDate = calculateSubscriptionEndDate(userForm.subscriptionPlan);
+      } else {
+        endDate = existingUser.subscriptionEndDate;
+      }
+
+      const { error: dbError } = await supabase.from('teachers').update({
+        full_name: userForm.name,
+        email: userForm.email,
+        role: userForm.role,
+        level: userForm.level,
+        subscription_plan: userForm.subscriptionPlan,
+        subscription_end_date: endDate
+      }).eq('id', userId);
+
+      if (dbError) throw dbError;
+
+      Swal.fire('Sukses', `Data "${userForm.name}" berhasil diperbarui.`, 'success');
+
+      // Refresh User list
+      const { data: updatedUsers } = await supabase.from('teachers').select('*').order('created_at', { ascending: false });
+      if (updatedUsers) {
+        setAllUsers(updatedUsers.map((t: any) => ({
+          id: t.id,
+          email: t.email,
+          name: t.full_name,
+          role: t.role,
+          level: t.level,
+          isActive: t.is_active === true,
+          subscriptionPlan: t.subscription_plan || 'NONE',
+          subscriptionEndDate: t.subscription_end_date || null,
+          password: t.password_plain || ''
+        })));
+      }
+    } catch (e: any) {
+      console.error(e);
+      Swal.fire('Error', e.message, 'error');
+    }
+  };
+
+  const handleAdminDeleteUser = async (userId: string) => {
+    try {
+      const { error: dbError } = await supabase.from('teachers').delete().eq('id', userId);
+      if (dbError) throw dbError;
+
+      Swal.fire('Terhapus', 'Akun guru telah dihapus.', 'success');
+
+      setAllUsers(prev => prev.filter(u => u.id !== userId));
+    } catch (e: any) {
+      console.error(e);
+      Swal.fire('Error', e.message, 'error');
+    }
+  };
+
+  const handleAdminApproveUser = async (userId: string) => {
+    try {
+      const { error: dbError } = await supabase.from('teachers').update({
+        is_active: true
+      }).eq('id', userId);
+
+      if (dbError) throw dbError;
+
+      Swal.fire('Disetujui', 'Pendaftaran guru telah disetujui.', 'success');
+
+      setAllUsers(prev => prev.map(u => u.id === userId ? { ...u, isActive: true } : u));
+    } catch (e: any) {
+      console.error(e);
+      Swal.fire('Error', e.message, 'error');
+    }
+  };
+
+  const handleAdminRejectUser = async (userId: string) => {
+    try {
+      const { error: dbError } = await supabase.from('teachers').delete().eq('id', userId);
+      if (dbError) throw dbError;
+
+      Swal.fire('Ditolak', 'Pendaftaran guru telah ditolak dan dihapus.', 'success');
+
+      setAllUsers(prev => prev.filter(u => u.id !== userId));
+    } catch (e: any) {
+      console.error(e);
+      Swal.fire('Error', e.message, 'error');
+    }
   };
 
   const handleSaveIdentity = async (updatedData: IdentityData) => {
@@ -416,11 +739,30 @@ const AppContent = () => {
 
         <Route path="/admin" element={
             <ProtectedRoute user={currentUser} allowedRoles={['ADMIN']} redirectPath="/">
-                <AdminPanel users={allUsers} onAddUser={()=>{}} onDeleteUser={()=>{}} onUpdateUser={()=>{}} onApproveUser={()=>{}} onRejectUser={()=>{}} onGoToApp={() => navigate('/dashboard')} onLogout={() => handleLogout()} waNumber={adminWaNumber} onUpdateWaNumber={setAdminWaNumber} />
+                <AdminPanel 
+                    users={allUsers} 
+                    onAddUser={handleAdminAddUser} 
+                    onDeleteUser={handleAdminDeleteUser} 
+                    onUpdateUser={handleAdminUpdateUser} 
+                    onApproveUser={handleAdminApproveUser} 
+                    onRejectUser={handleAdminRejectUser} 
+                    onGoToApp={() => navigate('/dashboard')} 
+                    onLogout={() => handleLogout()} 
+                    waNumber={adminWaNumber} 
+                    onUpdateWaNumber={setAdminWaNumber} 
+                />
             </ProtectedRoute>
         } />
 
-        <Route element={<ProtectedRoute user={currentUser} redirectPath="/"><MainLayout identity={identity} currentUser={currentUser} onLogout={() => handleLogout()} /></ProtectedRoute>}>
+        <Route element={
+          <ProtectedRoute user={currentUser} redirectPath="/">
+            {currentUser && currentUser.role !== 'ADMIN' && currentUser.subscriptionEndDate && new Date(currentUser.subscriptionEndDate) < new Date() ? (
+              <BillingPaywall user={currentUser} onLogout={() => handleLogout(true)} adminWaNumber={adminWaNumber} />
+            ) : (
+              <MainLayout identity={identity} currentUser={currentUser} onLogout={() => handleLogout()} />
+            )}
+          </ProtectedRoute>
+        }>
             <Route path="dashboard" element={
                 <Dashboard 
                     onNavigate={handleContextNavigate} identity={identity} schedules={schedules}

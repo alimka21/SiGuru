@@ -72,6 +72,8 @@ export interface User {
   isActive: boolean;
   lastLogin?: string;
   password?: string; // Added: Plain Text Password for Admin View
+  subscriptionPlan?: 'BASIC' | 'TRIWULAN' | 'SEMESTER' | 'PREMIUM' | 'NONE';
+  subscriptionEndDate?: string | null;
 }
 
 // CALENDAR EVENT TYPE
